@@ -28,15 +28,251 @@ import {
   ShieldCheck,
   AlertCircle,
   Undo2,
-  ChevronLeft,
-  ChevronRight,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
+
+/* ══════════════════════════════════════════════════════════════════════
+   1. PROCEDURAL WEB AUDIO SYNTHESIZER (ZERO-LATENCY TACTILE SOUND)
+   ══════════════════════════════════════════════════════════════════════ */
+
+class SyntheticHaptics {
+  private ctx: AudioContext | null = null;
+  public enabled: boolean = true;
+
+  private init() {
+    if (!this.ctx && typeof window !== 'undefined') {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (AudioCtx) this.ctx = new AudioCtx();
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      void this.ctx.resume();
+    }
+  }
+
+  click(freq = 1800, duration = 0.008) {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + duration);
+
+    gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start();
+    osc.stop(this.ctx.currentTime + duration);
+  }
+
+  subThud() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(95, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(28, this.ctx.currentTime + 0.18);
+
+    gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.18);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.18);
+  }
+}
+
+const audio = new SyntheticHaptics();
+
+/* ══════════════════════════════════════════════════════════════════════
+   2. SHADER-DRIVEN METABOLIC CORE (WEBGL CANVAS)
+   ══════════════════════════════════════════════════════════════════════ */
+
+const VS_SOURCE = `
+  attribute vec2 position;
+  varying vec2 vUv;
+  void main() {
+    vUv = (position + 1.0) * 0.5;
+    gl_Position = vec4(position, 0.0, 1.0);
+  }
+`;
+
+const FS_SOURCE = `
+  precision highp float;
+  varying vec2 vUv;
+  uniform float u_time;
+  uniform float u_progress;
+  uniform float u_over;
+  uniform vec2 u_mouse;
+
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+  
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
+
+  void main() {
+    vec2 uv = (vUv - 0.5) * 2.0;
+    float dist = length(uv);
+    
+    vec2 mouseOffset = (u_mouse - 0.5) * 0.5;
+    vec2 p = uv - mouseOffset;
+    
+    float angle = atan(p.y, p.x);
+    float normAngle = (angle + 3.14159265) / (2.0 * 3.14159265);
+    
+    float n = noise(p * 2.8 + vec2(u_time * 0.4, -u_time * 0.2));
+    float ringR = 0.68 + (n * 0.08);
+    float ringThickness = 0.055;
+    
+    float ringMask = smoothstep(ringThickness, 0.0, abs(length(p) - ringR));
+    float arcMask = step(normAngle, u_progress);
+    if (u_progress >= 0.999) arcMask = 1.0;
+
+    float innerGlow = smoothstep(ringR, 0.0, length(p)) * 0.22;
+    
+    vec3 baseColor = mix(vec3(0.8, 1.0, 0.0), vec3(0.98, 0.25, 0.35), u_over);
+    vec3 glowColor = mix(vec3(0.4, 0.9, 0.1), vec3(0.9, 0.1, 0.2), u_over);
+    
+    vec3 col = baseColor * (ringMask * arcMask * 2.2);
+    col += glowColor * innerGlow;
+    col += vec3(0.08, 0.1, 0.09) * smoothstep(0.95, 0.0, dist);
+
+    float alpha = clamp(ringMask * arcMask + innerGlow * 1.5, 0.0, 1.0);
+    gl_FragColor = vec4(col, alpha);
+  }
+`;
+
+const MetabolicCoreGL = memo(function MetabolicCoreGL({
+  eaten,
+  target,
+}: {
+  eaten: number;
+  target: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mouseRef = useRef<[number, number]>([0.5, 0.5]);
+
+  const progress = Math.min(eaten / (target || 1), 1.0);
+  const isOver = eaten > target;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const gl = canvas.getContext('webgl', { alpha: true, antialias: true });
+    if (!gl) return;
+
+    const compileShader = (type: number, src: string) => {
+      const s = gl.createShader(type)!;
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      return s;
+    };
+
+    const program = gl.createProgram()!;
+    gl.attachShader(program, compileShader(gl.VERTEX_SHADER, VS_SOURCE));
+    gl.attachShader(program, compileShader(gl.FRAGMENT_SHADER, FS_SOURCE));
+    gl.linkProgram(program);
+    gl.useProgram(program);
+
+    const quadBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
+      gl.STATIC_DRAW,
+    );
+
+    const posLoc = gl.getAttribLocation(program, 'position');
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+    const uTime = gl.getUniformLocation(program, 'u_time');
+    const uProgress = gl.getUniformLocation(program, 'u_progress');
+    const uOver = gl.getUniformLocation(program, 'u_over');
+    const uMouse = gl.getUniformLocation(program, 'u_mouse');
+
+    let animId: number;
+    const start = performance.now();
+
+    const render = (now: number) => {
+      const elapsed = (now - start) * 0.001;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      gl.uniform1f(uTime, elapsed);
+      gl.uniform1f(uProgress, progress);
+      gl.uniform1f(uOver, isOver ? 1.0 : 0.0);
+      gl.uniform2f(uMouse, mouseRef.current[0], mouseRef.current[1]);
+
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      animId = requestAnimationFrame(render);
+    };
+
+    animId = requestAnimationFrame(render);
+    return () => {
+      cancelAnimationFrame(animId);
+      gl.deleteProgram(program);
+    };
+  }, [progress, isOver]);
+
+  return (
+    <div
+      className="relative flex items-center justify-center w-[160px] h-[160px] select-none shrink-0"
+      onPointerMove={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        mouseRef.current = [
+          (e.clientX - rect.left) / rect.width,
+          (e.clientY - rect.top) / rect.height,
+        ];
+      }}
+    >
+      <canvas
+        ref={canvasRef}
+        width={320}
+        height={320}
+        className="w-full h-full pointer-events-none drop-shadow-[0_0_24px_rgba(204,255,0,0.2)]"
+      />
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <span
+          className={`font-mono text-[9px] tracking-[0.25em] font-extrabold uppercase ${
+            isOver ? 'text-rose-400' : 'text-[#CCFF00]'
+          }`}
+        >
+          {isOver ? 'COMBUSTION' : 'RESERVE'}
+        </span>
+        <span className="font-black text-3xl tracking-tighter text-white tabular-nums leading-none mt-1">
+          {Math.abs(Math.round(target - eaten))}
+        </span>
+        <span className="font-mono text-[10px] text-zinc-400 tracking-wider font-semibold mt-1">
+          KCAL {isOver ? 'SURPLUS' : 'LEFT'}
+        </span>
+      </div>
+    </div>
+  );
+});
 
 /* ══════════════════════════════════════════════════════════════════════
    CONSTANTS & TOKENS
    ══════════════════════════════════════════════════════════════════════ */
 
-const ACCENT = '#CCFF00';
 const SWIPE_REVEAL = 84;
 const TOAST_MS = 4000;
 const UNDO_MS = 5000;
@@ -193,7 +429,7 @@ const haptic = (ms = 12) => {
     try {
       navigator.vibrate(ms);
     } catch {
-      /* Ignored if gesture required */
+      /* ignore */
     }
   }
 };
@@ -223,54 +459,6 @@ const num = (v: unknown, fallback = 0): number => {
   const n = typeof v === 'string' ? parseFloat(v) : Number(v);
   return Number.isFinite(n) ? n : fallback;
 };
-
-/* ══════════════════════════════════════════════════════════════════════
-   HOOKS
-   ══════════════════════════════════════════════════════════════════════ */
-
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setReduced(mq.matches);
-    const onChange = () => setReduced(mq.matches);
-    mq.addEventListener?.('change', onChange);
-    return () => mq.removeEventListener?.('change', onChange);
-  }, []);
-  return reduced;
-}
-
-function useTween(value: number, ms = 500, disabled = false) {
-  const [v, setV] = useState(value);
-  const fromRef = useRef(value);
-  const rafRef = useRef(0);
-
-  useEffect(() => {
-    if (disabled) {
-      fromRef.current = value;
-      setV(value);
-      return;
-    }
-    const from = fromRef.current;
-    if (from === value) return;
-
-    const start = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min((now - start) / ms, 1);
-      const eased = 1 - Math.pow(1 - t, 3);
-      const cur = from + (value - from) * eased;
-      fromRef.current = cur;
-      setV(cur);
-      if (t < 1) rafRef.current = requestAnimationFrame(tick);
-      else fromRef.current = value;
-    };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [value, ms, disabled]);
-
-  return disabled ? value : v;
-}
 
 /* ══════════════════════════════════════════════════════════════════════
    MICRO COMPONENTS
@@ -418,7 +606,10 @@ const SwipeRow = memo(function SwipeRow({
     if (lock.current === 'x') {
       const open = dx < -SWIPE_REVEAL / 2;
       setDx(open ? -SWIPE_REVEAL : 0);
-      if (open) haptic(15);
+      if (open) {
+        haptic(15);
+        audio.click(1400);
+      }
     }
     lock.current = null;
   };
@@ -452,78 +643,6 @@ const SwipeRow = memo(function SwipeRow({
   );
 });
 
-const CalorieRing = memo(function CalorieRing({
-  eaten,
-  target,
-}: {
-  eaten: number;
-  target: number;
-}) {
-  const SIZE = 148;
-  const STROKE = 11;
-  const R = (SIZE - STROKE) / 2;
-  const C = 2 * Math.PI * R;
-
-  const reducedMotion = usePrefersReducedMotion();
-  const remaining = target - eaten;
-  const over = remaining < 0;
-  const frac = Math.max(0, Math.min(eaten / (target || 1), 1));
-  const shown = useTween(Math.abs(remaining), 550, reducedMotion);
-
-  return (
-    <div
-      className="relative shrink-0 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.4)]"
-      style={{ width: SIZE, height: SIZE }}
-      role="img"
-      aria-label={over ? `${Math.abs(remaining)} kcal over target` : `${remaining} kcal left`}
-    >
-      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="w-full h-full -rotate-90" aria-hidden>
-        <circle
-          cx={SIZE / 2}
-          cy={SIZE / 2}
-          r={R}
-          fill="none"
-          stroke="rgba(255,255,255,0.05)"
-          strokeWidth={STROKE}
-        />
-        <circle
-          cx={SIZE / 2}
-          cy={SIZE / 2}
-          r={R}
-          fill="none"
-          stroke={over ? '#FB7185' : ACCENT}
-          strokeWidth={STROKE}
-          strokeLinecap="round"
-          strokeDasharray={`${C * frac} ${C}`}
-          style={{
-            transition: reducedMotion ? 'none' : 'stroke-dasharray 600ms cubic-bezier(.16,1,.3,1)',
-            opacity: frac === 0 ? 0 : 1,
-          }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span
-          className={`font-mono text-[10px] tracking-[0.2em] font-extrabold ${
-            over ? 'text-rose-400' : 'text-zinc-400'
-          }`}
-        >
-          {over ? 'OVER BUDGET' : 'REMAINING'}
-        </span>
-        <span
-          className={`font-black text-4xl tracking-tighter tabular-nums leading-none mt-1 ${
-            over ? 'text-rose-400' : 'text-white'
-          }`}
-        >
-          {Math.round(shown)}
-        </span>
-        <span className="font-mono text-[11px] text-zinc-400 mt-1 font-medium tabular-nums">
-          of {target} kcal
-        </span>
-      </div>
-    </div>
-  );
-});
-
 const MacroCard = memo(function MacroCard({
   label,
   val,
@@ -541,13 +660,17 @@ const MacroCard = memo(function MacroCard({
 
   return (
     <div
-      className={`border rounded-2xl p-3.5 transition shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] ${
-        isOver ? 'bg-rose-500/[0.04] border-rose-500/30' : 'bg-[#111215] border-white/[0.06]'
+      onClick={() => audio.click(2200)}
+      className={`border rounded-2xl p-3.5 transition shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] active:scale-[0.97] cursor-pointer ${
+        isOver ? 'bg-rose-500/[0.04] border-rose-500/30' : 'bg-[#111215] border-white/[0.08]'
       }`}
     >
-      <span className="font-mono text-[10px] tracking-[0.16em] text-zinc-400 font-extrabold block">
-        {label}
-      </span>
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] tracking-[0.16em] text-zinc-400 font-extrabold block">
+          {label}
+        </span>
+        <span className="font-mono text-[9px] text-zinc-500 font-bold">{Math.round(pct)}%</span>
+      </div>
       <div className="mt-1 flex items-baseline gap-1">
         <span className={`font-black text-xl tabular-nums ${isOver ? 'text-rose-300' : 'text-white'}`}>
           {Math.round(val)}
@@ -699,6 +822,7 @@ const Composer = memo(
     const submit = useCallback(() => {
       const text = input.trim();
       if (!text || parsing) return;
+      audio.click(1600);
       onSubmitText(text);
     }, [input, parsing, onSubmitText]);
 
@@ -732,6 +856,7 @@ const Composer = memo(
               onClick={() => {
                 onOpenReview();
                 haptic();
+                audio.click(2000);
               }}
               className="flex items-center gap-1.5 bg-[#CCFF00] text-black font-mono text-[11px] font-black tracking-wider px-4 py-1.5 rounded-full shadow-[0_0_24px_rgba(204,255,0,0.35)] active:scale-95 transition"
             >
@@ -757,6 +882,7 @@ const Composer = memo(
             type="button"
             onClick={() => {
               haptic();
+              audio.click(1800);
               fileRef.current?.click();
             }}
             disabled={parsing}
@@ -788,7 +914,7 @@ const Composer = memo(
             onClick={submit}
             disabled={parsing || !input.trim()}
             aria-label="Parse log entry"
-            className="bg-[#CCFF00] text-black disabled:bg-white/5 disabled:text-zinc-600 rounded-full p-3 transition active:scale-90 font-bold"
+            className="bg-[#CCFF00] text-black disabled:bg-white/5 disabled:text-zinc-600 rounded-full p-3 transition active:scale-90 font-bold shadow-[0_0_16px_rgba(204,255,0,0.25)]"
           >
             {parsing ? (
               <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
@@ -827,6 +953,7 @@ export default function IronLogApp() {
   const [userId, setUserId] = useState('');
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
   /* ---------- Toast feedback ---------- */
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -845,6 +972,7 @@ export default function IronLogApp() {
       opts?: { tone?: 'error' | 'info'; action?: ToastState['action']; duration?: number },
     ) => {
       haptic(20);
+      audio.click(900, 0.02);
       if (toastTimer.current) clearTimeout(toastTimer.current);
       const id = ++toastSeq.current;
       setToast({ id, message, tone: opts?.tone ?? 'error', action: opts?.action });
@@ -894,6 +1022,14 @@ export default function IronLogApp() {
   const parseAbort = useRef<AbortController | null>(null);
   const reqId = useRef(0);
   const savingRef = useRef(false);
+
+  /* ---------- Sound Toggle ---------- */
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    audio.enabled = next;
+    setSoundEnabled(next);
+    if (next) audio.click(2400);
+  };
 
   /* ---------- Migration ---------- */
   const migrateGuestData = useCallback(async (guestId: string, authUid: string) => {
@@ -1088,6 +1224,7 @@ export default function IronLogApp() {
     (d: Date) => {
       if (today && startOfDay(d) > startOfDay(today)) return;
       haptic();
+      audio.click(1800);
       setSelectedDate(d);
     },
     [today],
@@ -1156,7 +1293,7 @@ export default function IronLogApp() {
           }));
 
         if (foods.length === 0 && exercises.length === 0 && data.weight_kg == null) {
-          notify("Couldn't extract food, sets, or scale data. Try rephrasing.", { tone: 'info' });
+          notify("Couldn't extract telemetry. Try rephrasing.", { tone: 'info' });
           return;
         }
 
@@ -1164,10 +1301,11 @@ export default function IronLogApp() {
         if (exercises.length) setDraftExercises((d) => [...d, ...exercises]);
         if (data.weight_kg != null) setDraftWeight(num(data.weight_kg, currentWeight));
 
+        audio.subThud();
         setSheetOpen(true);
       } catch (err) {
         if ((err as Error)?.name === 'AbortError') return;
-        notify('Parsing failed. Check your network or API quota.');
+        notify('Parsing failed. Check connection.');
       } finally {
         if (parseAbort.current === controller) parseAbort.current = null;
         setParsing(false);
@@ -1182,6 +1320,7 @@ export default function IronLogApp() {
     savingRef.current = true;
     setSaving(true);
     haptic(20);
+    audio.subThud();
 
     const when = selectedDate ?? new Date();
     const ts = isToday
@@ -1254,6 +1393,7 @@ export default function IronLogApp() {
     async (item: FoodItem) => {
       if (!item.id) return;
       haptic(15);
+      audio.click(800, 0.015);
 
       setDayFoods((d) => d.filter((x) => x.id !== item.id));
       const { error } = await supabase.from('food_logs').delete().eq('id', item.id);
@@ -1271,6 +1411,7 @@ export default function IronLogApp() {
           label: 'UNDO',
           onClick: async () => {
             dismissToast();
+            audio.click(1800);
             const { error: e2 } = await supabase.from('food_logs').insert(item);
             if (!e2) setDayFoods((d) => [item, ...d.filter((x) => x.id !== item.id)].sort(byNewest));
           },
@@ -1284,6 +1425,7 @@ export default function IronLogApp() {
     async (item: ExerciseItem) => {
       if (!item.id) return;
       haptic(15);
+      audio.click(800, 0.015);
 
       setDayExercises((d) => d.filter((x) => x.id !== item.id));
       const { error } = await supabase.from('workout_logs').delete().eq('id', item.id);
@@ -1301,6 +1443,7 @@ export default function IronLogApp() {
           label: 'UNDO',
           onClick: async () => {
             dismissToast();
+            audio.click(1800);
             const { error: e2 } = await supabase.from('workout_logs').insert(item);
             if (!e2) setDayExercises((d) => [item, ...d.filter((x) => x.id !== item.id)].sort(byNewest));
           },
@@ -1334,6 +1477,7 @@ export default function IronLogApp() {
     setProfile(updated);
     setShowSettings(false);
     haptic(20);
+    audio.subThud();
 
     const { error } = await supabase.from('user_profiles').upsert(updated);
     if (error) {
@@ -1351,28 +1495,28 @@ export default function IronLogApp() {
     () => [
       { label: 'PROTEIN', val: protein, target: profile.target_protein, accentHex: '#38BDF8' },
       { label: 'CARBS', val: carbs, target: profile.target_carbs, accentHex: '#34D399' },
-      { label: 'FATS', val: fat, target: profile.target_fat, accentHex: '#FBBF24' },
+      { label: 'LIPIDS', val: fat, target: profile.target_fat, accentHex: '#FBBF24' },
     ],
     [protein, carbs, fat, profile.target_protein, profile.target_carbs, profile.target_fat],
   );
 
   if (!mounted || !selectedDate || !today) {
-    return <div className="fixed inset-0 bg-[#0B0C0E]" />;
+    return <div className="fixed inset-0 bg-[#08080A]" />;
   }
 
   const listEmpty = activeTab === 'meals' ? dayFoods.length === 0 : dayExercises.length === 0;
 
   return (
     <div className="fixed inset-0 bg-black flex justify-center overflow-hidden select-none">
-      {/* ── Film Grain SVG Texture ───────────────────────────── */}
-      <svg className="pointer-events-none fixed inset-0 z-50 h-full w-full opacity-[0.035]" aria-hidden>
-        <filter id="noise">
-          <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch" />
+      {/* ── Persistent Film Noise ───────────────────────────── */}
+      <svg className="pointer-events-none fixed inset-0 z-50 h-full w-full opacity-[0.038]" aria-hidden>
+        <filter id="grain">
+          <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="3" stitchTiles="stitch" />
         </filter>
-        <rect width="100%" height="100%" filter="url(#noise)" />
+        <rect width="100%" height="100%" filter="url(#grain)" />
       </svg>
 
-      <div className="w-full max-w-md h-full flex flex-col relative overflow-hidden bg-[#0B0C0E] text-zinc-300 font-sans border-x border-white/[0.04]">
+      <div className="w-full max-w-md h-full flex flex-col relative overflow-hidden bg-[#08080A] text-zinc-300 font-sans border-x border-white/[0.05]">
         {/* ── Toast Alerts ─────────────────────────────────────── */}
         {toast && (
           <div
@@ -1418,59 +1562,51 @@ export default function IronLogApp() {
 
         {/* ── App Header ───────────────────────────────────────── */}
         <header
-          className="shrink-0 px-5 pb-3 flex items-center justify-between"
+          className="shrink-0 px-6 pb-3 pt-3 flex items-center justify-between border-b border-white/[0.04]"
           style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}
         >
           <div>
-            <span className="font-mono text-[10px] tracking-[0.22em] text-zinc-400 uppercase font-black block">
-              {selectedDate.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase()}
-            </span>
-            <span className="font-black text-2xl tracking-tighter text-white">
-              {isToday
-                ? 'TODAY'
-                : selectedDate
-                    .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                    .toUpperCase()}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[9px] tracking-[0.25em] text-[#CCFF00] font-black uppercase">
+                [SYS:NOMINAL]
+              </span>
+              <span className="font-mono text-[9px] text-zinc-600 font-bold">REV_09.4</span>
+            </div>
+            <h1 className="font-black text-2xl tracking-tighter text-white mt-0.5">
+              IRONLOG<span className="text-[#CCFF00]">.</span>OS
+            </h1>
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 bg-[#141518] border border-white/[0.08] rounded-full pl-3 pr-3.5 py-1.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
-              <Scale className="w-3.5 h-3.5 text-[#CCFF00]" aria-hidden />
-              <span className="font-black text-sm text-white tabular-nums">
-                {currentWeight.toFixed(1)}
-              </span>
-              <span className="font-mono text-[10px] text-zinc-400 font-bold">KG</span>
-              {weightDelta > 0 ? (
-                <span className="font-mono text-[11px] text-[#CCFF00] flex items-center gap-0.5 font-bold">
-                  <TrendingDown className="w-3 h-3" aria-hidden />
-                  {weightDelta}
-                </span>
-              ) : weightDelta < 0 ? (
-                <span className="font-mono text-[11px] text-amber-400 flex items-center gap-0.5 font-bold">
-                  <TrendingUp className="w-3 h-3" aria-hidden />
-                  {Math.abs(weightDelta)}
-                </span>
-              ) : null}
-            </div>
-
+            <button
+              type="button"
+              onClick={toggleSound}
+              aria-label="Toggle Sound"
+              className="p-2.5 rounded-full bg-[#111215] border border-white/[0.08] text-zinc-400 hover:text-white transition active:scale-90 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+            >
+              {soundEnabled ? (
+                <Volume2 className="w-3.5 h-3.5 text-[#CCFF00]" />
+              ) : (
+                <VolumeX className="w-3.5 h-3.5 text-zinc-500" />
+              )}
+            </button>
             <button
               type="button"
               onClick={() => {
+                audio.click(1900);
                 setTempProfile(profile);
                 setShowSettings(true);
-                haptic();
               }}
               aria-label="Biometrics profile"
-              className="p-2.5 rounded-full bg-[#141518] border border-white/[0.08] text-zinc-300 hover:text-white transition active:scale-90 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+              className="p-2.5 rounded-full bg-[#111215] border border-white/[0.08] text-zinc-400 hover:text-white transition active:scale-90 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
             >
-              <Sliders className="w-4 h-4 text-[#CCFF00]" aria-hidden />
+              <Sliders className="w-3.5 h-3.5 text-white" />
             </button>
           </div>
         </header>
 
         {/* ── Week Carousel Ribbon ─────────────────────────────── */}
-        <nav className="shrink-0 px-5 pb-3 grid grid-cols-7 gap-1.5" aria-label="Timeline ribbon">
+        <nav className="shrink-0 px-5 py-2.5 grid grid-cols-7 gap-1.5 border-b border-white/[0.04]" aria-label="Timeline ribbon">
           {weekDays.map((d, i) => {
             const selected = sameDay(d, selectedDate);
             const isActualToday = sameDay(d, today);
@@ -1501,56 +1637,53 @@ export default function IronLogApp() {
           })}
         </nav>
 
-        {/* ── Main Dynamic Stream ──────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto overscroll-contain pb-44 [-webkit-overflow-scrolling:touch]">
-          {/* Calorie & Telemetry Module */}
-          <section className="px-5">
-            <div className="flex items-center gap-5 rounded-3xl border border-white/[0.08] bg-[#111215] p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
-              <CalorieRing eaten={eaten} target={profile.target_calories} />
-              <div className="flex-1 min-w-0 space-y-2">
-                <div className="flex items-baseline justify-between border-b border-white/[0.05] pb-2">
-                  <span className="font-mono text-[10px] tracking-widest text-zinc-400 uppercase font-black">
-                    INTAKE
-                  </span>
-                  <span className="font-black text-base text-white tabular-nums">{eaten} KCAL</span>
-                </div>
-                <div className="flex items-baseline justify-between border-b border-white/[0.05] pb-2">
-                  <span className="font-mono text-[10px] tracking-widest text-zinc-400 uppercase font-black">
-                    BURNED
-                  </span>
-                  <span className="font-black text-base text-sky-400 tabular-nums">
-                    {burned > 0 ? `-${burned}` : '0'} KCAL
-                  </span>
-                </div>
-                <div className="flex items-baseline justify-between">
-                  <span className="font-mono text-[10px] tracking-widest text-zinc-400 uppercase font-black">
-                    TO TARGET
-                  </span>
-                  <span className="font-black text-base text-white tabular-nums">
-                    {toGoal}{' '}
-                    <span className="font-mono text-[10px] text-zinc-400 font-bold">KG</span>
-                  </span>
-                </div>
+        {/* ── Scrollable Kinetic Viewport ──────────────────────── */}
+        <div className="flex-1 overflow-y-auto overscroll-contain pb-44 px-5 space-y-4 pt-4 [-webkit-overflow-scrolling:touch]">
+          {/* Asymmetric WebGL Core + Telemetry */}
+          <div className="bg-[#0F1013] border border-white/[0.08] rounded-3xl p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] flex items-center justify-between">
+            <MetabolicCoreGL eaten={eaten} target={profile.target_calories} />
+            <div className="flex flex-col gap-2 flex-1 pl-3 min-w-0">
+              <div className="bg-[#141518] border border-white/[0.06] rounded-xl px-3 py-1.5">
+                <span className="font-mono text-[9px] uppercase tracking-widest text-zinc-500 font-extrabold block">
+                  INTAKE
+                </span>
+                <span className="font-mono text-sm font-black text-white tabular-nums">{eaten} KCAL</span>
+              </div>
+              <div className="bg-[#141518] border border-white/[0.06] rounded-xl px-3 py-1.5">
+                <span className="font-mono text-[9px] uppercase tracking-widest text-zinc-500 font-extrabold block">
+                  BURNED
+                </span>
+                <span className="font-mono text-sm font-black text-sky-400 tabular-nums">
+                  {burned > 0 ? `-${burned}` : '0'} KCAL
+                </span>
+              </div>
+              <div className="bg-[#141518] border border-white/[0.06] rounded-xl px-3 py-1.5">
+                <span className="font-mono text-[9px] uppercase tracking-widest text-zinc-500 font-extrabold block">
+                  SCALE TARGET
+                </span>
+                <span className="font-mono text-sm font-black text-[#CCFF00] tabular-nums">
+                  {currentWeight.toFixed(1)} / {profile.goal_weight_kg} KG
+                </span>
               </div>
             </div>
-          </section>
+          </div>
 
           {/* Macro Split Deck */}
-          <section className="px-5 mt-3 grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-3 gap-2">
             {macros.map((m) => (
               <MacroCard key={m.label} {...m} />
             ))}
-          </section>
+          </div>
 
           {/* Tabs & Feed Logs */}
-          <section className="mt-5">
-            <div className="sticky top-0 z-10 bg-[#0B0C0E]/95 backdrop-blur-md px-5 py-2.5 border-b border-white/[0.04]">
-              <div className="grid grid-cols-2 gap-1 bg-[#141518] p-1 rounded-xl border border-white/[0.06]">
+          <div className="space-y-3">
+            <div className="sticky top-0 z-10 bg-[#08080A]/95 backdrop-blur-md py-1 border-b border-white/[0.04]">
+              <div className="grid grid-cols-2 gap-1 bg-[#111215] p-1 rounded-xl border border-white/[0.06]">
                 <button
                   type="button"
                   onClick={() => {
+                    audio.click(2000);
                     setActiveTab('meals');
-                    haptic();
                   }}
                   className={`font-mono text-xs font-black py-2 rounded-lg transition active:scale-95 ${
                     activeTab === 'meals'
@@ -1563,8 +1696,8 @@ export default function IronLogApp() {
                 <button
                   type="button"
                   onClick={() => {
+                    audio.click(2000);
                     setActiveTab('workouts');
-                    haptic();
                   }}
                   className={`font-mono text-xs font-black py-2 rounded-lg transition active:scale-95 ${
                     activeTab === 'workouts'
@@ -1578,13 +1711,13 @@ export default function IronLogApp() {
             </div>
 
             {loadingDay && listEmpty ? (
-              <div className="px-5 py-4 space-y-3" aria-hidden>
+              <div className="py-4 space-y-3" aria-hidden>
                 {[0, 1, 2].map((i) => (
                   <div key={i} className="h-16 rounded-2xl bg-white/[0.02] animate-pulse" />
                 ))}
               </div>
             ) : listEmpty ? (
-              <div className="mx-5 my-8 py-14 text-center border border-dashed border-white/[0.08] rounded-3xl">
+              <div className="my-6 py-12 text-center border border-dashed border-white/[0.08] rounded-3xl">
                 <p className="font-mono text-xs text-zinc-400 uppercase tracking-widest font-bold">
                   {isToday ? 'No records registered today' : 'No logs for this date'}
                 </p>
@@ -1608,11 +1741,11 @@ export default function IronLogApp() {
             )}
 
             {!listEmpty && (
-              <p className="font-mono text-[10px] text-zinc-500 text-center py-4 tracking-wider uppercase">
+              <p className="font-mono text-[10px] text-zinc-500 text-center py-2 tracking-wider uppercase">
                 ← Swipe left to delete an item
               </p>
             )}
-          </section>
+          </div>
         </div>
 
         {/* ── Fixed Composer Dock ──────────────────────────────── */}
@@ -1636,7 +1769,7 @@ export default function IronLogApp() {
             <div
               role="dialog"
               aria-label="Review Staged Logs"
-              className="absolute inset-x-0 bottom-0 z-50 bg-[#141518] border-t border-white/[0.12] rounded-t-[32px] flex flex-col max-h-[88dvh] shadow-2xl animate-in slide-in-from-bottom duration-300"
+              className="absolute inset-x-0 bottom-0 z-50 bg-[#141518] border-t border-white/[0.12] rounded-t-[32px] flex flex-col max-h-[88dvh] shadow-2xl"
             >
               <div className="shrink-0 px-6 pt-3 pb-3 border-b border-white/[0.06]">
                 <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mb-3" />
@@ -1683,7 +1816,10 @@ export default function IronLogApp() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => setDraftFoods((d) => d.filter((_, j) => j !== i))}
+                        onClick={() => {
+                          audio.click(1000);
+                          setDraftFoods((d) => d.filter((_, j) => j !== i));
+                        }}
                         className="p-1 text-zinc-400 hover:text-rose-400 transition"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1751,7 +1887,10 @@ export default function IronLogApp() {
                       <p className="text-sm font-bold text-white">{e.exercise_name}</p>
                       <button
                         type="button"
-                        onClick={() => setDraftExercises((d) => d.filter((_, j) => j !== i))}
+                        onClick={() => {
+                          audio.click(1000);
+                          setDraftExercises((d) => d.filter((_, j) => j !== i));
+                        }}
                         className="p-1 text-zinc-400 hover:text-rose-400 transition"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1859,7 +1998,10 @@ export default function IronLogApp() {
               >
                 <button
                   type="button"
-                  onClick={() => setSheetOpen(false)}
+                  onClick={() => {
+                    audio.click(1200);
+                    setSheetOpen(false);
+                  }}
                   className="flex-1 py-3.5 rounded-full font-mono font-bold text-xs bg-white/[0.04] text-zinc-300 hover:text-white transition"
                 >
                   DISCARD
@@ -1893,7 +2035,7 @@ export default function IronLogApp() {
             <div
               role="dialog"
               aria-label="Biometrics & Targets"
-              className="absolute inset-x-0 bottom-0 z-50 bg-[#141518] border-t border-white/[0.12] rounded-t-[32px] max-h-[92dvh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300"
+              className="absolute inset-x-0 bottom-0 z-50 bg-[#141518] border-t border-white/[0.12] rounded-t-[32px] max-h-[92dvh] flex flex-col shadow-2xl"
             >
               <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mt-3 mb-1" />
               <div className="shrink-0 px-6 pt-3 pb-4 border-b border-white/[0.06] flex items-center justify-between">
@@ -1907,7 +2049,10 @@ export default function IronLogApp() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowSettings(false)}
+                  onClick={() => {
+                    audio.click(1400);
+                    setShowSettings(false);
+                  }}
                   className="w-8 h-8 rounded-full bg-white/[0.04] flex items-center justify-center text-zinc-400 hover:text-white"
                 >
                   ✕
@@ -1928,6 +2073,7 @@ export default function IronLogApp() {
                   <button
                     type="button"
                     onClick={() => {
+                      audio.click(1800);
                       setShowSettings(false);
                       setShowAuthModal(true);
                     }}
@@ -1985,6 +2131,7 @@ export default function IronLogApp() {
                         type="button"
                         key={opt.id}
                         onClick={() => {
+                          audio.click(1800);
                           setTempProfile((p) => ({ ...p, goal: opt.id }));
                           haptic();
                         }}
@@ -2050,6 +2197,7 @@ export default function IronLogApp() {
                   <button
                     type="button"
                     onClick={async () => {
+                      audio.click(1200);
                       await supabase.auth.signOut();
                       setShowAuthModal(false);
                     }}
@@ -2063,6 +2211,7 @@ export default function IronLogApp() {
                   <button
                     type="button"
                     onClick={async () => {
+                      audio.click(2000);
                       await supabase.auth.signInWithOAuth({
                         provider: 'google',
                         options: { redirectTo: window.location.origin },
