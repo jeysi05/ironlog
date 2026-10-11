@@ -12,7 +12,11 @@ import {
   Trophy, 
   Sparkles, 
   TrendingDown, 
-  Sliders 
+  Sliders,
+  User,
+  LogOut,
+  Mail,
+  ShieldCheck
 } from 'lucide-react';
 
 /* ---------- types ---------- */
@@ -368,6 +372,15 @@ function Gauge({
 export default function IronLogApp() {
   const [mounted, setMounted] = useState(false);
   const [userId, setUserId] = useState<string>('');
+  const [sessionUser, setSessionUser] = useState<any>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Auth form states
+  const [authEmail, setAuthEmail] = useState('');
+  const [authOtp, setAuthOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+
   const [today, setToday] = useState<Date | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [input, setInput] = useState('');
@@ -416,14 +429,56 @@ export default function IronLogApp() {
   const sheetStartY = useRef(0);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
 
-  // Initialize client device session & clock
+  // Handle guest data migration to authenticated account
+  const migrateGuestData = async (guestId: string, authUid: string) => {
+    if (!guestId || !authUid || guestId === authUid) return;
+    try {
+      await Promise.all([
+        supabase.from('food_logs').update({ user_id: authUid }).eq('user_id', guestId),
+        supabase.from('workout_logs').update({ user_id: authUid }).eq('user_id', guestId),
+        supabase.from('weight_logs').update({ user_id: authUid }).eq('user_id', guestId),
+      ]);
+      localStorage.removeItem('ironlog_user_id');
+    } catch (e) {
+      console.error('Migration error:', e);
+    }
+  };
+
+  // Initialize client session, guest ID & auth state listener
   useEffect(() => {
     let localUid = localStorage.getItem('ironlog_user_id');
     if (!localUid) {
       localUid = 'usr_' + crypto.randomUUID().slice(0, 16);
       localStorage.setItem('ironlog_user_id', localUid);
     }
-    setUserId(localUid);
+
+    // Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setSessionUser(session.user);
+        setUserId(session.user.id);
+      } else {
+        setUserId(localUid!);
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          const guestId = localStorage.getItem('ironlog_user_id');
+          setSessionUser(session.user);
+          setUserId(session.user.id);
+          if (guestId) {
+            await migrateGuestData(guestId, session.user.id);
+          }
+        } else {
+          setSessionUser(null);
+          const currentGuest = localStorage.getItem('ironlog_user_id') || ('usr_' + crypto.randomUUID().slice(0, 16));
+          localStorage.setItem('ironlog_user_id', currentGuest);
+          setUserId(currentGuest);
+        }
+      }
+    );
 
     const now = new Date();
     setToday(now);
@@ -441,6 +496,7 @@ export default function IronLogApp() {
     window.addEventListener('focus', onVisible);
 
     return () => {
+      authListener.subscription.unsubscribe();
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
     };
@@ -517,6 +573,71 @@ export default function IronLogApp() {
       fetchDataForDate(selectedDate, userId);
     }
   }, [selectedDate, mounted, userId]);
+
+  /* ---------- authentication handlers ---------- */
+
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail.trim()) return;
+    setAuthLoading(true);
+    haptic();
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: authEmail.trim(),
+      options: {
+        emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+      },
+    });
+
+    setAuthLoading(false);
+    if (error) {
+      alert(error.message);
+    } else {
+      setOtpSent(true);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authOtp.trim()) return;
+    setAuthLoading(true);
+    haptic();
+
+    const { error } = await supabase.auth.verifyOtp({
+      email: authEmail.trim(),
+      token: authOtp.trim(),
+      type: 'email',
+    });
+
+    setAuthLoading(false);
+    if (error) {
+      alert(error.message);
+    } else {
+      setShowAuthModal(false);
+      setOtpSent(false);
+      setAuthOtp('');
+      setAuthEmail('');
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    haptic();
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: typeof window !== 'undefined' ? `${window.location.origin}` : undefined,
+      },
+    });
+    if (error) alert('Google Sign-in failed: ' + error.message);
+  };
+
+  const handleSignOut = async () => {
+    haptic(15);
+    await supabase.auth.signOut();
+    setShowAuthModal(false);
+  };
+
+  /* ---------- intake calculations ---------- */
 
   const eaten = dayFoods.reduce((a, c) => a + (c.calories || 0), 0);
   const protein = dayFoods.reduce((a, c) => a + Number(c.protein_g || 0), 0);
@@ -1211,6 +1332,31 @@ export default function IronLogApp() {
               {/* Scrollable Form Content */}
               <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
                 
+                {/* Account / Cloud Sync Card */}
+                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between font-mono text-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center">
+                      <User className="w-4 h-4 text-[#CCFF00]" />
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px] uppercase font-bold tracking-wider">Cloud Account</span>
+                      <span className="text-white font-semibold truncate max-w-[160px] block text-xs">
+                        {sessionUser ? sessionUser.email : 'Guest Mode (Local Only)'}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowSettings(false);
+                      setShowAuthModal(true);
+                      haptic();
+                    }}
+                    className="bg-[#CCFF00]/10 border border-[#CCFF00]/30 hover:bg-[#CCFF00]/20 text-[#CCFF00] font-bold px-3 py-1.5 rounded-xl transition active:scale-95 text-xs"
+                  >
+                    {sessionUser ? 'MANAGE' : 'SIGN IN / SYNC'}
+                  </button>
+                </div>
+
                 {/* Live Metabolic Preview Card */}
                 <div className="p-4 rounded-2xl bg-gradient-to-b from-white/[0.05] to-white/[0.02] border border-white/[0.08]">
                   <div className="flex items-baseline justify-between">
@@ -1395,7 +1541,42 @@ export default function IronLogApp() {
             </div>
           </>
         )}
-      </div>
-    </div>
-  );
-}
+
+        {/* Authentication Modal */}
+        {showAuthModal && (
+          <>
+            <div 
+              className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm transition-opacity"
+              onClick={() => setShowAuthModal(false)}
+            />
+            <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 z-50 bg-[#141414] border border-white/10 rounded-3xl p-6 shadow-2xl font-mono text-xs max-w-sm mx-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-white/[0.06] mb-4">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-[#CCFF00]" />
+                  <span className="text-sm font-bold text-white uppercase tracking-wider">
+                    {sessionUser ? 'Account Cloud Sync' : 'Sign In to IronLog'}
+                  </span>
+                </div>
+                <button 
+                  onClick={() => setShowAuthModal(false)}
+                  className="text-zinc-500 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {sessionUser ? (
+                <div className="space-y-4">
+                  <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/5 space-y-1">
+                    <span className="text-[10px] text-zinc-500 uppercase tracking-widest block font-bold">Logged In As</span>
+                    <span className="text-white text-sm font-bold block truncate">{sessionUser.email}</span>
+                    <span className="text-[10px] text-emerald-400 flex items-center gap-1 pt-1 font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Cloud Sync Active
+                    </span>
+                  </div>
+                  <p className="text-zinc-400 text-[11px] leading-relaxed">
+                    All your meals, weigh-ins, and personal records automatically sync across your iPhone, laptop, and iPad.
+                  </p>
+                  <button
+                    onClick={handleSignOut}
+                    className="w-full py-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 font-bold hover:bg-red-500/20 transition active:scale-95 flex items-center justify-
