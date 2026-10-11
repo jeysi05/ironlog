@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { 
@@ -12,7 +14,7 @@ import {
   Trophy, 
   Sparkles, 
   TrendingDown, 
-  Sliders
+  Sliders 
 } from 'lucide-react';
 
 /* ---------- types ---------- */
@@ -70,13 +72,11 @@ function computeTargets(
   activity_level: UserProfile['activity_level'],
   goal: UserProfile['goal']
 ) {
-  // Mifflin-St Jeor Formula
   const bmr =
     gender === 'male'
       ? 10 * weight_kg + 6.25 * height_cm - 5 * age + 5
       : 10 * weight_kg + 6.25 * height_cm - 5 * age - 161;
 
-  // Realistic activity multipliers (light is optimal for standard gym lifters with desk jobs)
   const multipliers: Record<UserProfile['activity_level'], number> = {
     sedentary: 1.2,
     light: 1.375,
@@ -94,8 +94,8 @@ function computeTargets(
   };
 
   const calories = Math.max(1200, Math.round(tdee + goalDeltas[goal]));
-  const protein = Math.round(weight_kg * 2.0); // 2.0g/kg retention benchmark
-  const fat = Math.round((calories * 0.25) / 9); // 25% healthy lipids
+  const protein = Math.round(weight_kg * 2.0);
+  const fat = Math.round((calories * 0.25) / 9);
   const carbs = Math.max(50, Math.round((calories - (protein * 4 + fat * 9)) / 4));
 
   return { calories, protein, carbs, fat, tdee: Math.round(tdee) };
@@ -322,8 +322,8 @@ function Gauge({
 
 export default function IronLogApp() {
   const [mounted, setMounted] = useState(false);
-  const [today, setToday] = useState<Date>(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [today, setToday] = useState<Date | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [input, setInput] = useState('');
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -370,20 +370,17 @@ export default function IronLogApp() {
   const sheetStartY = useRef(0);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
 
-  // Setup clock & PWA background resume listeners
+  // Client-only mount: eliminate Next.js 16 prerender clock mismatch
   useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setToday(now);
-      setSelectedDate((prev) => (sameDay(prev, today) ? now : prev));
-    };
-
-    updateTime();
+    const now = new Date();
+    setToday(now);
+    setSelectedDate(now);
     setMounted(true);
 
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
-        updateTime();
+        const latest = new Date();
+        setToday(latest);
       }
     };
 
@@ -421,7 +418,6 @@ export default function IronLogApp() {
     setDayFoods(foodsRes.data ?? []);
     setDayExercises(workoutsRes.data ?? []);
     
-    // Weight logs are the sole source of truth for current scale weight
     if (weightRes.data && weightRes.data.length > 0) {
       setCurrentWeight(Number(weightRes.data[0].weight_kg));
     } else {
@@ -441,20 +437,19 @@ export default function IronLogApp() {
   };
 
   useEffect(() => {
-    if (mounted) {
+    if (mounted && selectedDate) {
       fetchProfile();
       fetchDataForDate(selectedDate);
     }
   }, [selectedDate, mounted]);
 
-  /* dynamic totals */
   const eaten = dayFoods.reduce((a, c) => a + (c.calories || 0), 0);
   const protein = dayFoods.reduce((a, c) => a + Number(c.protein_g || 0), 0);
   const carbs = dayFoods.reduce((a, c) => a + Number(c.carbs_g || 0), 0);
   const fat = dayFoods.reduce((a, c) => a + Number(c.fat_g || 0), 0);
   const burned = dayExercises.reduce((a, c) => a + (c.calories_burned || 0), 0);
 
-  const isToday = sameDay(today, selectedDate);
+  const isToday = selectedDate && today ? sameDay(today, selectedDate) : true;
   const hasDrafts = draftFoods.length > 0 || draftExercises.length > 0 || draftWeight !== null;
 
   const draftKcal = draftFoods.reduce((a, c) => a + (c.calories || 0), 0);
@@ -462,19 +457,20 @@ export default function IronLogApp() {
   const draftBurn = draftExercises.reduce((a, c) => a + (c.calories_burned || 0), 0);
 
   const goToDay = (d: Date) => {
-    if (startOfDay(d) > startOfDay(today)) return;
+    if (today && startOfDay(d) > startOfDay(today)) return;
     haptic();
     setSelectedDate(d);
   };
 
   const shiftDay = (n: number) => {
+    if (!selectedDate) return;
     const next = new Date(selectedDate);
     next.setDate(next.getDate() + n);
     goToDay(next);
   };
 
   const weekDays = (() => {
-    if (!mounted) return [];
+    if (!mounted || !selectedDate) return [];
     const base = selectedDate;
     const mondayOffset = (base.getDay() + 6) % 7;
     const monday = new Date(base);
@@ -486,7 +482,6 @@ export default function IronLogApp() {
     });
   })();
 
-  /* parse / commit */
   const handleParse = async (overrideBase64?: string, mimeType?: string) => {
     if (!input.trim() && !overrideBase64) return;
     setParsing(true);
@@ -526,7 +521,7 @@ export default function IronLogApp() {
       setSheetOpen(true);
     } catch (err) {
       console.error(err);
-      alert('Extraction failed. Check internet quota.');
+      alert('Extraction failed. Check internet connection or quota.');
     } finally {
       setParsing(false);
     }
@@ -547,7 +542,7 @@ export default function IronLogApp() {
   const handleCommit = async () => {
     setSaving(true);
     haptic(20);
-    const when = selectedDate;
+    const when = selectedDate || new Date();
     let ts: string;
     if (isToday) {
       ts = new Date().toISOString();
@@ -599,7 +594,7 @@ export default function IronLogApp() {
       setDraftExercises([]);
       setDraftWeight(null);
       setSheetOpen(false);
-      await fetchDataForDate(selectedDate);
+      if (selectedDate) await fetchDataForDate(selectedDate);
     } catch (err: any) {
       alert('Save failed: ' + (err?.message ?? 'Unknown error'));
     } finally {
@@ -635,11 +630,9 @@ export default function IronLogApp() {
     await supabase.from('workout_logs').delete().eq('id', id);
   };
 
-  // Fixed Delta: baseline start weight compared to current weight
-  const weightDelta = Number((profile.start_weight_kg - currentWeight).toFixed(1));
-  const toGoal = Number((currentWeight - profile.goal_weight_kg).toFixed(1));
+  const weightDelta = Number(((profile.start_weight_kg ?? 95.0) - currentWeight).toFixed(1));
+  const toGoal = Number((currentWeight - (profile.goal_weight_kg ?? 78.0)).toFixed(1));
 
-  // Live preview targets for the settings drawer
   const livePreview = computeTargets(
     tempProfile.gender,
     tempProfile.age,
@@ -649,7 +642,7 @@ export default function IronLogApp() {
     tempProfile.goal
   );
 
-  if (!mounted) {
+  if (!mounted || !selectedDate || !today) {
     return <div className="min-h-screen bg-[#0A0A0A]" />;
   }
 
@@ -725,7 +718,6 @@ export default function IronLogApp() {
 
         {/* Scroll Area */}
         <div className="flex-1 overflow-y-auto overscroll-contain pb-56">
-          {/* Gauge Zone: Swipe Left/Right to Change Day */}
           <section
             className="px-5 pt-1"
             onTouchStart={(e) => {
@@ -872,7 +864,6 @@ export default function IronLogApp() {
           className="absolute inset-x-0 bottom-0 z-30 px-3 pt-6 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/95 to-transparent"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
         >
-          {/* Pending Draft Notification Chip (Preserves drafts when sheet is dismissed) */}
           {hasDrafts && !sheetOpen && (
             <div className="flex justify-center mb-2">
               <button
