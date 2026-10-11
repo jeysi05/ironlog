@@ -168,16 +168,63 @@ function NumField({
       <input
         inputMode={decimal ? 'decimal' : 'numeric'}
         value={text}
+        onFocus={(e) => e.target.select()}
         onChange={(e) => {
           const raw = e.target.value;
           setText(raw);
           const n = Number(raw);
           if (raw !== '' && !Number.isNaN(n)) onChange(n);
         }}
-        className={`${width} bg-white/5 rounded-xl px-2.5 py-2 text-right font-mono text-base text-white focus:outline-none focus:ring-1 focus:ring-[#CCFF00] border border-white/5`}
+        className={`${width} bg-white/5 rounded-xl px-2.5 py-2 text-right font-mono text-base text-white focus:outline-none focus:ring-1 focus:ring-[#CCFF00] border border-white/5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
       />
       {suffix && <span className="font-mono text-xs text-zinc-400">{suffix}</span>}
     </label>
+  );
+}
+
+function ProtocolField({
+  label,
+  value,
+  unit,
+  step = '1',
+  onChange,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  step?: string;
+  onChange: (v: number) => void;
+}) {
+  const [text, setText] = useState(String(value ?? ''));
+
+  useEffect(() => {
+    setText(String(value ?? ''));
+  }, [value]);
+
+  return (
+    <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-3 focus-within:border-[#CCFF00]/50 transition">
+      <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500 block mb-1">
+        {label}
+      </span>
+      <div className="flex items-center justify-between">
+        <input
+          type="number"
+          step={step}
+          value={text}
+          onFocus={(e) => e.target.select()}
+          onChange={(e) => {
+            const raw = e.target.value;
+            setText(raw);
+            const n = parseFloat(raw);
+            if (!isNaN(n)) onChange(n);
+          }}
+          className="w-full bg-transparent text-base font-mono font-bold text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        />
+        <span className="text-xs font-mono text-zinc-500 shrink-0 font-medium ml-1">
+          {unit}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -406,21 +453,20 @@ export default function IronLogApp() {
       setTempProfile(data);
       setCurrentWeight(Number(data.weight_kg));
     } else {
-      // Create fresh default profile for new user
       const initial: UserProfile = {
         id: uid,
         gender: 'male',
-        age: 24,
+        age: 23,
         height_cm: 175,
         start_weight_kg: 80.0,
         weight_kg: 80.0,
         goal_weight_kg: 75.0,
         activity_level: 'light',
         goal: 'cut',
-        target_calories: 2100,
+        target_calories: 2000,
         target_protein: 160,
-        target_carbs: 220,
-        target_fat: 60,
+        target_carbs: 215,
+        target_fat: 56,
       };
       await supabase.from('user_profiles').insert(initial);
       setProfile(initial);
@@ -1134,20 +1180,201 @@ export default function IronLogApp() {
         {showSettings && (
           <>
             <div
-              className="absolute inset-0 z-40 bg-black/80 backdrop-blur-sm"
+              className="absolute inset-0 z-40 bg-black/80 backdrop-blur-sm transition-opacity"
               onClick={() => setShowSettings(false)}
             />
-            <div className="absolute inset-x-0 bottom-0 z-50 bg-[#121212] border-t border-white/10 rounded-t-[28px] max-h-[90dvh] flex flex-col p-6 overflow-y-auto">
-              <div className="flex items-center justify-between pb-4 border-b border-white/[0.06]">
-                <div className="flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-[#CCFF00]" />
-                  <h3 className="font-mono text-sm font-bold tracking-wider text-white uppercase">Biometric Protocol</h3>
+            <div className="absolute inset-x-0 bottom-0 z-50 bg-[#121212] border-t border-white/10 rounded-t-[32px] max-h-[92dvh] flex flex-col shadow-2xl">
+              
+              {/* Header with Title and Close X */}
+              <div className="shrink-0 px-6 pt-5 pb-4 border-b border-white/[0.06] flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-[#CCFF00]/10 flex items-center justify-center">
+                    <Sliders className="w-4 h-4 text-[#CCFF00]" />
+                  </div>
+                  <div>
+                    <h3 className="font-mono text-sm font-bold tracking-wider text-white uppercase">
+                      Biometric Protocol
+                    </h3>
+                    <p className="font-mono text-[10px] text-zinc-500">
+                      Calculated via Mifflin-St Jeor equation
+                    </p>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white transition active:scale-90"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Scrollable Form Content */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+                
+                {/* Live Metabolic Preview Card */}
+                <div className="p-4 rounded-2xl bg-gradient-to-b from-white/[0.05] to-white/[0.02] border border-white/[0.08]">
+                  <div className="flex items-baseline justify-between">
+                    <div>
+                      <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest block">
+                        CALCULATED TARGET
+                      </span>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className="font-mono text-2xl font-black text-white tabular-nums">
+                          {livePreview.calories}
+                        </span>
+                        <span className="font-mono text-xs text-zinc-500">KCAL / DAY</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-mono text-[10px] text-zinc-500 block">
+                        MAINTENANCE (TDEE)
+                      </span>
+                      <span className="font-mono text-xs font-bold text-zinc-300">
+                        {livePreview.tdee} kcal
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Macro Split Bar */}
+                  <div className="mt-3 pt-3 border-t border-white/[0.06] grid grid-cols-3 gap-2 text-center font-mono">
+                    <div className="bg-blue-950/30 border border-blue-500/20 rounded-xl py-1.5">
+                      <span className="text-[9px] text-blue-400 block font-bold">PROTEIN</span>
+                      <span className="text-xs font-bold text-white">{livePreview.protein}g</span>
+                    </div>
+                    <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-xl py-1.5">
+                      <span className="text-[9px] text-emerald-400 block font-bold">CARBS</span>
+                      <span className="text-xs font-bold text-white">{livePreview.carbs}g</span>
+                    </div>
+                    <div className="bg-amber-950/30 border border-amber-500/20 rounded-xl py-1.5">
+                      <span className="text-[9px] text-amber-400 block font-bold">FATS</span>
+                      <span className="text-xs font-bold text-white">{livePreview.fat}g</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Gender Segmented Control */}
+                <div>
+                  <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500 block mb-1.5">
+                    Biological Sex
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5 bg-black/40 border border-white/5 p-1 rounded-2xl">
+                    {(['male', 'female'] as const).map((g) => (
+                      <button
+                        key={g}
+                        onClick={() => {
+                          setTempProfile({ ...tempProfile, gender: g });
+                          haptic();
+                        }}
+                        className={`py-2.5 rounded-xl font-mono text-xs font-bold capitalize transition active:scale-95 ${
+                          tempProfile.gender === g
+                            ? 'bg-[#CCFF00] text-black shadow-md shadow-[#CCFF00]/10'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Biometrics 2x2 Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <ProtocolField
+                    label="Current Age"
+                    value={tempProfile.age}
+                    unit="yrs"
+                    onChange={(v) => setTempProfile({ ...tempProfile, age: v })}
+                  />
+                  <ProtocolField
+                    label="Height"
+                    value={tempProfile.height_cm}
+                    unit="cm"
+                    onChange={(v) => setTempProfile({ ...tempProfile, height_cm: v })}
+                  />
+                  <ProtocolField
+                    label="Baseline Start"
+                    value={tempProfile.start_weight_kg}
+                    unit="kg"
+                    step="0.1"
+                    onChange={(v) => setTempProfile({ ...tempProfile, start_weight_kg: v })}
+                  />
+                  <ProtocolField
+                    label="Goal Weight"
+                    value={tempProfile.goal_weight_kg}
+                    unit="kg"
+                    step="0.1"
+                    onChange={(v) => setTempProfile({ ...tempProfile, goal_weight_kg: v })}
+                  />
+                </div>
+
+                {/* Active Objective */}
+                <div>
+                  <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500 block mb-1.5">
+                    Deficit / Surplus Goal
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'aggressive_cut', label: 'Aggressive Cut', delta: '-650 kcal' },
+                      { id: 'cut', label: 'Moderate Cut', delta: '-450 kcal' },
+                      { id: 'maintain', label: 'Maintenance', delta: '0 kcal' },
+                      { id: 'lean_bulk', label: 'Lean Bulk', delta: '+250 kcal' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => {
+                          setTempProfile({ ...tempProfile, goal: opt.id as any });
+                          haptic();
+                        }}
+                        className={`p-3 rounded-2xl border text-left transition font-mono active:scale-95 ${
+                          tempProfile.goal === opt.id
+                            ? 'border-[#CCFF00] bg-[#CCFF00]/10 text-white'
+                            : 'border-white/[0.06] bg-white/[0.02] text-zinc-400'
+                        }`}
+                      >
+                        <span className="text-xs font-bold block text-white">{opt.label}</span>
+                        <span className={`text-[10px] mt-0.5 block ${
+                          tempProfile.goal === opt.id ? 'text-[#CCFF00]' : 'text-zinc-500'
+                        }`}>
+                          {opt.delta}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Activity Level Selector */}
+                <div>
+                  <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500 block mb-1.5">
+                    Activity Multiplier
+                  </span>
+                  <div className="relative">
+                    <select
+                      value={tempProfile.activity_level}
+                      onChange={(e) => setTempProfile({ ...tempProfile, activity_level: e.target.value as any })}
+                      className="w-full bg-white/[0.03] border border-white/[0.08] rounded-2xl px-3.5 py-3 text-sm font-mono text-white focus:outline-none focus:border-[#CCFF00]/50 appearance-none"
+                    >
+                      <option value="sedentary">Sedentary (Desk job, minimal daily movement)</option>
+                      <option value="light">Lightly Active (1–3 gym sessions / week)</option>
+                      <option value="moderate">Moderately Active (3–5 sessions / week + steps)</option>
+                      <option value="very_active">Very Active (6+ hard sessions / physical job)</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-400 text-xs">
+                      ▼
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sticky Bottom Thumb-Zone Action */}
+              <div
+                className="shrink-0 p-5 border-t border-white/[0.06] bg-[#121212]"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+              >
                 <button
                   onClick={async () => {
                     const updated = {
                       ...tempProfile,
-                      id: userId,
+                      id: userId || 'default_user',
                       target_calories: livePreview.calories,
                       target_protein: livePreview.protein,
                       target_carbs: livePreview.carbs,
@@ -1157,133 +1384,13 @@ export default function IronLogApp() {
                     const { error } = await supabase.from('user_profiles').upsert(updated);
                     if (error) alert('Profile update failed: ' + error.message);
                     setShowSettings(false);
-                    haptic(15);
+                    haptic(20);
                   }}
-                  className="bg-[#CCFF00] text-black font-mono font-bold text-xs px-4 py-2 rounded-full active:scale-95 transition"
+                  className="w-full py-4 rounded-2xl bg-[#CCFF00] text-black font-mono font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#CCFF00]/20 active:scale-[0.98] transition"
                 >
-                  SAVE & RECALCULATE
+                  <Check className="w-4 h-4 stroke-[3]" />
+                  SAVE & APPLY PROTOCOL
                 </button>
-              </div>
-
-              {/* Real-time TDEE and Target Preview */}
-              <div className="mt-4 p-3.5 rounded-2xl bg-white/[0.03] border border-[#CCFF00]/20 font-mono text-xs space-y-1">
-                <div className="flex justify-between items-center text-zinc-400">
-                  <span>ESTIMATED TDEE:</span>
-                  <span className="text-white font-bold">{livePreview.tdee} KCAL</span>
-                </div>
-                <div className="flex justify-between items-center text-zinc-400">
-                  <span>RECALCULATED TARGET:</span>
-                  <span className="text-[#CCFF00] font-black">{livePreview.calories} KCAL</span>
-                </div>
-                <div className="flex justify-between text-zinc-400 pt-1 border-t border-white/5">
-                  <span className="text-blue-400 font-semibold">{livePreview.protein}g PRO</span>
-                  <span className="text-emerald-400 font-semibold">{livePreview.carbs}g CARBS</span>
-                  <span className="text-amber-400 font-semibold">{livePreview.fat}g FAT</span>
-                </div>
-              </div>
-
-              <div className="space-y-4 mt-4 font-mono text-xs">
-                {/* Gender & Age */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <span className="text-zinc-400 uppercase block mb-1">Gender</span>
-                    <div className="grid grid-cols-2 gap-1 bg-white/5 p-1 rounded-xl">
-                      {(['male', 'female'] as const).map((g) => (
-                        <button
-                          key={g}
-                          onClick={() => setTempProfile({ ...tempProfile, gender: g })}
-                          className={`py-2 text-base rounded-lg capitalize ${tempProfile.gender === g ? 'bg-[#CCFF00] text-black font-bold' : 'text-zinc-400'}`}
-                        >
-                          {g}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-zinc-400 uppercase block mb-1">Age</span>
-                    <input
-                      type="number"
-                      value={tempProfile.age}
-                      onChange={(e) => setTempProfile({ ...tempProfile, age: Number(e.target.value) })}
-                      className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-base text-white font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* Height & Start Baseline Weight */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <span className="text-zinc-400 uppercase block mb-1">Height (cm)</span>
-                    <input
-                      type="number"
-                      value={tempProfile.height_cm}
-                      onChange={(e) => setTempProfile({ ...tempProfile, height_cm: Number(e.target.value) })}
-                      className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-base text-white font-mono"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-zinc-400 uppercase block mb-1">Start Weight (kg)</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={tempProfile.start_weight_kg}
-                      onChange={(e) => setTempProfile({ ...tempProfile, start_weight_kg: Number(e.target.value) })}
-                      className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-base text-white font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* Target Goal Weight */}
-                <div>
-                  <span className="text-zinc-400 uppercase block mb-1">Target Goal Weight (kg)</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={tempProfile.goal_weight_kg}
-                    onChange={(e) => setTempProfile({ ...tempProfile, goal_weight_kg: Number(e.target.value) })}
-                    className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-base text-white font-mono"
-                  />
-                </div>
-
-                {/* Active Goal */}
-                <div>
-                  <span className="text-zinc-400 uppercase block mb-1">Active Objective</span>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {[
-                      { id: 'aggressive_cut', label: 'Aggressive Cut (-650 kcal)' },
-                      { id: 'cut', label: 'Moderate Cut (-450 kcal)' },
-                      { id: 'maintain', label: 'Maintenance (0 kcal)' },
-                      { id: 'lean_bulk', label: 'Lean Bulk (+250 kcal)' },
-                    ].map((opt) => (
-                      <button
-                        key={opt.id}
-                        onClick={() => setTempProfile({ ...tempProfile, goal: opt.id as any })}
-                        className={`p-3 rounded-xl border text-left transition ${
-                          tempProfile.goal === opt.id
-                            ? 'border-[#CCFF00] bg-[#CCFF00]/10 text-white font-bold'
-                            : 'border-white/5 bg-white/[0.02] text-zinc-400'
-                        }`}
-                      >
-                        <span className="text-xs block">{opt.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Activity Multiplier */}
-                <div>
-                  <span className="text-zinc-400 uppercase block mb-1">Activity Level</span>
-                  <select
-                    value={tempProfile.activity_level}
-                    onChange={(e) => setTempProfile({ ...tempProfile, activity_level: e.target.value as any })}
-                    className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2.5 text-base text-white"
-                  >
-                    <option value="sedentary">Sedentary (Desk job, minimal cardio)</option>
-                    <option value="light">Lightly Active (1-3 gym sessions/wk)</option>
-                    <option value="moderate">Moderately Active (3-5 sessions/wk, high steps)</option>
-                    <option value="very_active">Very Active (6+ sessions/wk, physical job)</option>
-                  </select>
-                </div>
               </div>
             </div>
           </>
