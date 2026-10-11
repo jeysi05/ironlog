@@ -320,6 +320,7 @@ function Gauge({
 
 export default function IronLogApp() {
   const [mounted, setMounted] = useState(false);
+  const [userId, setUserId] = useState<string>('');
   const [today, setToday] = useState<Date | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [input, setInput] = useState('');
@@ -328,7 +329,7 @@ export default function IronLogApp() {
 
   // User Profile & Biometrics
   const [profile, setProfile] = useState<UserProfile>({
-    id: 'default_user',
+    id: '',
     gender: 'male',
     age: 22,
     height_cm: 173,
@@ -368,8 +369,15 @@ export default function IronLogApp() {
   const sheetStartY = useRef(0);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
 
-  // Client-only mount: eliminate Next.js 16 prerender clock mismatch
+  // Initialize client device session & clock
   useEffect(() => {
+    let localUid = localStorage.getItem('ironlog_user_id');
+    if (!localUid) {
+      localUid = 'usr_' + crypto.randomUUID().slice(0, 16);
+      localStorage.setItem('ironlog_user_id', localUid);
+    }
+    setUserId(localUid);
+
     const now = new Date();
     setToday(now);
     setSelectedDate(now);
@@ -391,24 +399,47 @@ export default function IronLogApp() {
     };
   }, []);
 
-  const fetchProfile = async () => {
-    const { data } = await supabase.from('user_profiles').select('*').eq('id', 'default_user').maybeSingle();
+  const fetchProfile = async (uid: string) => {
+    const { data } = await supabase.from('user_profiles').select('*').eq('id', uid).maybeSingle();
     if (data) {
       setProfile(data);
       setTempProfile(data);
+      setCurrentWeight(Number(data.weight_kg));
+    } else {
+      // Create fresh default profile for new user
+      const initial: UserProfile = {
+        id: uid,
+        gender: 'male',
+        age: 24,
+        height_cm: 175,
+        start_weight_kg: 80.0,
+        weight_kg: 80.0,
+        goal_weight_kg: 75.0,
+        activity_level: 'light',
+        goal: 'cut',
+        target_calories: 2100,
+        target_protein: 160,
+        target_carbs: 220,
+        target_fat: 60,
+      };
+      await supabase.from('user_profiles').insert(initial);
+      setProfile(initial);
+      setTempProfile(initial);
+      setCurrentWeight(80.0);
     }
   };
 
-  const fetchDataForDate = async (date: Date) => {
+  const fetchDataForDate = async (date: Date, uid: string) => {
+    if (!uid) return;
     const id = ++reqId.current;
     const start = startOfDay(date);
     const end = endOfDay(date);
 
     const [foodsRes, workoutsRes, weightRes, historyRes] = await Promise.all([
-      supabase.from('food_logs').select('*').gte('created_at', start.toISOString()).lte('created_at', end.toISOString()).order('created_at', { ascending: false }),
-      supabase.from('workout_logs').select('*').gte('created_at', start.toISOString()).lte('created_at', end.toISOString()).order('created_at', { ascending: false }),
-      supabase.from('weight_logs').select('*').order('created_at', { ascending: false }).limit(1),
-      supabase.from('workout_logs').select('exercise_name, weight_kg, reps').lt('created_at', start.toISOString()).not('weight_kg', 'is', null).order('created_at', { ascending: false }).limit(500),
+      supabase.from('food_logs').select('*').eq('user_id', uid).gte('created_at', start.toISOString()).lte('created_at', end.toISOString()).order('created_at', { ascending: false }),
+      supabase.from('workout_logs').select('*').eq('user_id', uid).gte('created_at', start.toISOString()).lte('created_at', end.toISOString()).order('created_at', { ascending: false }),
+      supabase.from('weight_logs').select('*').eq('user_id', uid).order('created_at', { ascending: false }).limit(1),
+      supabase.from('workout_logs').select('exercise_name, weight_kg, reps').eq('user_id', uid).lt('created_at', start.toISOString()).not('weight_kg', 'is', null).order('created_at', { ascending: false }).limit(500),
     ]);
 
     if (id !== reqId.current) return;
@@ -419,7 +450,7 @@ export default function IronLogApp() {
     if (weightRes.data && weightRes.data.length > 0) {
       setCurrentWeight(Number(weightRes.data[0].weight_kg));
     } else {
-      setCurrentWeight(profile.start_weight_kg || 95.0);
+      setCurrentWeight(profile.start_weight_kg || 80.0);
     }
 
     const best: Record<string, HistoricalRecord> = {};
@@ -435,11 +466,11 @@ export default function IronLogApp() {
   };
 
   useEffect(() => {
-    if (mounted && selectedDate) {
-      fetchProfile();
-      fetchDataForDate(selectedDate);
+    if (mounted && selectedDate && userId) {
+      fetchProfile(userId);
+      fetchDataForDate(selectedDate, userId);
     }
-  }, [selectedDate, mounted]);
+  }, [selectedDate, mounted, userId]);
 
   const eaten = dayFoods.reduce((a, c) => a + (c.calories || 0), 0);
   const protein = dayFoods.reduce((a, c) => a + Number(c.protein_g || 0), 0);
@@ -519,7 +550,7 @@ export default function IronLogApp() {
       setSheetOpen(true);
     } catch (err) {
       console.error(err);
-      alert('Extraction failed. Check internet connection or quota.');
+      alert('Extraction failed. Check internet quota.');
     } finally {
       setParsing(false);
     }
@@ -538,6 +569,7 @@ export default function IronLogApp() {
   };
 
   const handleCommit = async () => {
+    if (!userId) return;
     setSaving(true);
     haptic(20);
     const when = selectedDate || new Date();
@@ -554,6 +586,7 @@ export default function IronLogApp() {
       if (draftFoods.length > 0) {
         const { error } = await supabase.from('food_logs').insert(
           draftFoods.map((f) => ({
+            user_id: userId,
             food_name: f.food_name,
             quantity: f.quantity,
             calories: f.calories,
@@ -569,6 +602,7 @@ export default function IronLogApp() {
       if (draftExercises.length > 0) {
         const { error } = await supabase.from('workout_logs').insert(
           draftExercises.map((e) => ({
+            user_id: userId,
             exercise_name: e.exercise_name,
             sets: e.sets || 0,
             reps: e.reps || 0,
@@ -582,7 +616,11 @@ export default function IronLogApp() {
       }
 
       if (draftWeight) {
-        const { error: wErr } = await supabase.from('weight_logs').insert({ weight_kg: draftWeight, created_at: ts });
+        const { error: wErr } = await supabase.from('weight_logs').insert({ 
+          user_id: userId,
+          weight_kg: draftWeight, 
+          created_at: ts 
+        });
         if (wErr) throw wErr;
         setCurrentWeight(draftWeight);
       }
@@ -592,7 +630,7 @@ export default function IronLogApp() {
       setDraftExercises([]);
       setDraftWeight(null);
       setSheetOpen(false);
-      if (selectedDate) await fetchDataForDate(selectedDate);
+      if (selectedDate) await fetchDataForDate(selectedDate, userId);
     } catch (err: any) {
       alert('Save failed: ' + (err?.message ?? 'Unknown error'));
     } finally {
@@ -628,8 +666,8 @@ export default function IronLogApp() {
     await supabase.from('workout_logs').delete().eq('id', id);
   };
 
-  const weightDelta = Number(((profile.start_weight_kg ?? 95.0) - currentWeight).toFixed(1));
-  const toGoal = Number((currentWeight - (profile.goal_weight_kg ?? 78.0)).toFixed(1));
+  const weightDelta = Number(((profile.start_weight_kg ?? 80.0) - currentWeight).toFixed(1));
+  const toGoal = Number((currentWeight - (profile.goal_weight_kg ?? 75.0)).toFixed(1));
 
   const livePreview = computeTargets(
     tempProfile.gender,
@@ -1109,6 +1147,7 @@ export default function IronLogApp() {
                   onClick={async () => {
                     const updated = {
                       ...tempProfile,
+                      id: userId,
                       target_calories: livePreview.calories,
                       target_protein: livePreview.protein,
                       target_carbs: livePreview.carbs,
