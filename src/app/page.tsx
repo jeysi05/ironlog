@@ -328,7 +328,7 @@ function Gauge({
   const ease = 'stroke-dasharray 700ms cubic-bezier(.2,.8,.2,1)';
 
   return (
-    <div className="relative mx-auto w-full max-w-[280px] aspect-square">
+    <div className="relative mx-auto w-full max-w-[270px] aspect-square">
       <svg viewBox="0 0 200 200" className="w-full h-full">
         <g transform="rotate(135 100 100)">
           <circle cx="100" cy="100" r={R} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="10" strokeLinecap="round" strokeDasharray={`${ARC * C} ${C}`} />
@@ -349,7 +349,7 @@ function Gauge({
       </svg>
 
       <div className="absolute inset-0 flex flex-col items-center justify-center pb-2">
-        <span className="font-mono text-xs tracking-[0.2em] text-zinc-400 uppercase">{over ? 'OVER' : 'REMAINING'}</span>
+        <span className="font-mono text-[11px] tracking-[0.2em] text-zinc-400 uppercase">{over ? 'OVER' : 'REMAINING'}</span>
         <span className={`font-black text-6xl tracking-tighter tabular-nums leading-none mt-1 ${over ? 'text-red-400' : 'text-white'}`}>
           {Math.round(shown)}
         </span>
@@ -391,17 +391,17 @@ export default function IronLogApp() {
   const [profile, setProfile] = useState<UserProfile>({
     id: '',
     gender: 'male',
-    age: 22,
-    height_cm: 173,
+    age: 23,
+    height_cm: 175,
     start_weight_kg: 95.0,
     weight_kg: 95.0,
     goal_weight_kg: 78.0,
     activity_level: 'light',
-    goal: 'aggressive_cut',
-    target_calories: 2050,
-    target_protein: 175,
-    target_carbs: 210,
-    target_fat: 55,
+    goal: 'cut',
+    target_calories: 2209,
+    target_protein: 190,
+    target_carbs: 225,
+    target_fat: 61,
   });
   
   const [showSettings, setShowSettings] = useState(false);
@@ -444,7 +444,7 @@ export default function IronLogApp() {
     }
   };
 
-  // Initialize client session, guest ID & auth state listener
+  // Initialize client session & listeners
   useEffect(() => {
     let localUid = localStorage.getItem('ironlog_user_id');
     if (!localUid) {
@@ -452,7 +452,6 @@ export default function IronLogApp() {
       localStorage.setItem('ironlog_user_id', localUid);
     }
 
-    // Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setSessionUser(session.user);
@@ -514,20 +513,20 @@ export default function IronLogApp() {
         gender: 'male',
         age: 23,
         height_cm: 175,
-        start_weight_kg: 80.0,
-        weight_kg: 80.0,
-        goal_weight_kg: 75.0,
+        start_weight_kg: 95.0,
+        weight_kg: 95.0,
+        goal_weight_kg: 78.0,
         activity_level: 'light',
         goal: 'cut',
-        target_calories: 2000,
-        target_protein: 160,
-        target_carbs: 215,
-        target_fat: 56,
+        target_calories: 2209,
+        target_protein: 190,
+        target_carbs: 225,
+        target_fat: 61,
       };
       await supabase.from('user_profiles').insert(initial);
       setProfile(initial);
       setTempProfile(initial);
-      setCurrentWeight(80.0);
+      setCurrentWeight(95.0);
     }
   };
 
@@ -552,7 +551,7 @@ export default function IronLogApp() {
     if (weightRes.data && weightRes.data.length > 0) {
       setCurrentWeight(Number(weightRes.data[0].weight_kg));
     } else {
-      setCurrentWeight(profile.start_weight_kg || 80.0);
+      setCurrentWeight(profile.start_weight_kg || 95.0);
     }
 
     const best: Record<string, HistoricalRecord> = {};
@@ -833,8 +832,8 @@ export default function IronLogApp() {
     await supabase.from('workout_logs').delete().eq('id', id);
   };
 
-  const weightDelta = Number(((profile.start_weight_kg ?? 80.0) - currentWeight).toFixed(1));
-  const toGoal = Number((currentWeight - (profile.goal_weight_kg ?? 75.0)).toFixed(1));
+  const weightDelta = Number(((profile.start_weight_kg ?? 95.0) - currentWeight).toFixed(1));
+  const toGoal = Number((currentWeight - (profile.goal_weight_kg ?? 78.0)).toFixed(1));
 
   const livePreview = computeTargets(
     tempProfile.gender,
@@ -846,24 +845,50 @@ export default function IronLogApp() {
   );
 
   if (!mounted || !selectedDate || !today) {
-    return <div className="min-h-screen bg-[#0A0A0A]" />;
+    return <div className="fixed inset-0 bg-[#0A0A0A]" />;
   }
 
   return (
-    <div className="bg-[#0A0A0A] text-zinc-300 font-sans selection:bg-[#CCFF00] selection:text-black">
+    <div className="fixed inset-0 bg-black flex justify-center overflow-hidden select-none">
       <style>{`
+        /* Lock root body on iOS to prevent elastic webpage bouncing */
+        html, body {
+          position: fixed;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          overscroll-behavior: none;
+          -webkit-overflow-scrolling: touch;
+          -webkit-user-select: none;
+          user-select: none;
+          -webkit-touch-callout: none;
+        }
+
+        /* Allow typing interaction inside inputs */
+        input, select, textarea {
+          -webkit-user-select: text;
+          user-select: text;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        * {
+          -webkit-tap-highlight-color: transparent;
+        }
+
         @keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
       `}</style>
 
-      <div className="relative mx-auto max-w-md h-[100dvh] flex flex-col overflow-hidden">
+      {/* Main Container - App Canvas */}
+      <div className="w-full max-w-md h-full flex flex-col relative overflow-hidden bg-[#0A0A0A] text-zinc-300 font-sans">
+        
         {/* Header */}
         <header
-          className="shrink-0 px-5 pb-3 flex items-center justify-between"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}
+          className="shrink-0 px-5 pb-2 flex items-center justify-between"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top) + 10px)' }}
         >
           <div>
-            <span className="font-mono text-xs tracking-[0.2em] text-zinc-400 uppercase block">
+            <span className="font-mono text-[10px] tracking-[0.2em] text-zinc-400 uppercase block">
               {selectedDate.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase()}
             </span>
             <span className="font-black text-2xl tracking-tighter text-white">
@@ -897,7 +922,7 @@ export default function IronLogApp() {
         </header>
 
         {/* Week Strip */}
-        <nav className="shrink-0 px-3 pb-3 grid grid-cols-7 gap-1">
+        <nav className="shrink-0 px-3 pb-2 grid grid-cols-7 gap-1">
           {weekDays.map((d, i) => {
             const selected = sameDay(d, selectedDate);
             const isActualToday = sameDay(d, today);
@@ -919,8 +944,8 @@ export default function IronLogApp() {
           })}
         </nav>
 
-        {/* Scroll Area */}
-        <div className="flex-1 overflow-y-auto overscroll-contain pb-56">
+        {/* Scrollable Feed Area (Bounded inside native bounds) */}
+        <div className="flex-1 overflow-y-auto overscroll-contain pb-44 [-webkit-overflow-scrolling:touch]">
           <section
             className="px-5 pt-1"
             onTouchStart={(e) => {
@@ -1065,7 +1090,7 @@ export default function IronLogApp() {
         {/* Floating Command Dock */}
         <div
           className="absolute inset-x-0 bottom-0 z-30 px-3 pt-6 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/95 to-transparent"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 10px)' }}
         >
           {hasDrafts && !sheetOpen && (
             <div className="flex justify-center mb-2">
@@ -1135,7 +1160,7 @@ export default function IronLogApp() {
           <>
             <div
               className="absolute inset-0 z-40 bg-black/75 backdrop-blur-sm"
-              style={{ animation: 'fadeIn 200ms ease-out', opacity: Math.max(0, 1 - sheetDy / 400) }}
+              onTouchMove={(e) => e.preventDefault()}
               onClick={() => setSheetOpen(false)}
             />
             <div
@@ -1180,7 +1205,7 @@ export default function IronLogApp() {
                 <p className="font-mono text-xs text-zinc-400 mt-1">Tap numbers directly to adjust portion estimates before logging.</p>
               </div>
 
-              <div className="flex-1 overflow-y-auto overscroll-contain px-5 space-y-3 pb-6">
+              <div className="flex-1 overflow-y-auto overscroll-contain px-5 space-y-3 pb-6 [-webkit-overflow-scrolling:touch]">
                 {draftWeight !== null && (
                   <div className="flex items-center justify-between rounded-2xl bg-white/[0.03] p-4 border border-white/[0.04]">
                     <span className="font-mono text-xs text-zinc-300 flex items-center gap-2">
@@ -1302,6 +1327,7 @@ export default function IronLogApp() {
           <>
             <div
               className="absolute inset-0 z-40 bg-black/80 backdrop-blur-sm transition-opacity"
+              onTouchMove={(e) => e.preventDefault()}
               onClick={() => setShowSettings(false)}
             />
             <div className="absolute inset-x-0 bottom-0 z-50 bg-[#121212] border-t border-white/10 rounded-t-[32px] max-h-[92dvh] flex flex-col shadow-2xl">
@@ -1330,7 +1356,7 @@ export default function IronLogApp() {
               </div>
 
               {/* Scrollable Form Content */}
-              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5 [-webkit-overflow-scrolling:touch]">
                 
                 {/* Account / Cloud Sync Card */}
                 <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between font-mono text-xs">
@@ -1398,7 +1424,7 @@ export default function IronLogApp() {
                   </div>
                 </div>
 
-                {/* Gender Segmented Control */}
+                {/* Biological Sex */}
                 <div>
                   <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500 block mb-1.5">
                     Biological Sex
@@ -1453,7 +1479,7 @@ export default function IronLogApp() {
                   />
                 </div>
 
-                {/* Active Objective */}
+                {/* Deficit / Surplus Goal */}
                 <div>
                   <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500 block mb-1.5">
                     Deficit / Surplus Goal
@@ -1488,7 +1514,7 @@ export default function IronLogApp() {
                   </div>
                 </div>
 
-                {/* Activity Level Selector */}
+                {/* Activity Multiplier */}
                 <div>
                   <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500 block mb-1.5">
                     Activity Multiplier
@@ -1547,6 +1573,7 @@ export default function IronLogApp() {
           <>
             <div 
               className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm transition-opacity"
+              onTouchMove={(e) => e.preventDefault()}
               onClick={() => setShowAuthModal(false)}
             />
             <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 z-50 bg-[#141414] border border-white/10 rounded-3xl p-6 shadow-2xl font-mono text-xs max-w-sm mx-auto">
@@ -1559,7 +1586,7 @@ export default function IronLogApp() {
                 </div>
                 <button 
                   onClick={() => setShowAuthModal(false)}
-                  className="text-zinc-500 hover:text-white"
+                  className="text-zinc-500 hover:text-white p-1"
                 >
                   ✕
                 </button>
@@ -1579,4 +1606,96 @@ export default function IronLogApp() {
                   </p>
                   <button
                     onClick={handleSignOut}
-                    className="w-full py-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 font-bold hover:bg-red-500/20 transition active:scale-95 flex items-center justify-
+                    className="w-full py-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 font-bold hover:bg-red-500/20 transition active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    SIGN OUT
+                  </button>
+                </div>
+              ) : !otpSent ? (
+                <div className="space-y-4">
+                  <p className="text-zinc-400 text-xs">
+                    Sign in to sync your data across devices. Existing logs on this phone will be linked automatically.
+                  </p>
+
+                  {/* Google OAuth Button */}
+                  <button
+                    onClick={handleGoogleSignIn}
+                    type="button"
+                    className="w-full py-3.5 rounded-2xl bg-white text-black font-mono font-bold text-xs flex items-center justify-center gap-2.5 active:scale-95 transition shadow-md"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                    </svg>
+                    CONTINUE WITH GOOGLE
+                  </button>
+
+                  <div className="flex items-center gap-2 my-2 text-zinc-600 text-[10px]">
+                    <div className="flex-1 h-px bg-white/5" />
+                    <span>OR USE EMAIL CODE</span>
+                    <div className="flex-1 h-px bg-white/5" />
+                  </div>
+
+                  {/* 6-Digit Email OTP Form */}
+                  <form onSubmit={handleSendOtp} className="space-y-3">
+                    <input
+                      type="email"
+                      required
+                      placeholder="name@example.com"
+                      value={authEmail}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-3 text-base text-white focus:outline-none focus:border-[#CCFF00]"
+                    />
+                    <button
+                      type="submit"
+                      disabled={authLoading}
+                      className="w-full py-3.5 rounded-2xl bg-[#CCFF00] text-black font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
+                    >
+                      {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                      SEND 6-DIGIT CODE
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <form onSubmit={handleVerifyOtp} className="space-y-4">
+                  <p className="text-zinc-400 text-xs">
+                    Enter the 6-digit code sent to <span className="text-white font-bold">{authEmail}</span>:
+                  </p>
+                  <input
+                    type="text"
+                    required
+                    pattern="[0-9]*"
+                    inputMode="numeric"
+                    placeholder="123456"
+                    maxLength={6}
+                    value={authOtp}
+                    onChange={(e) => setAuthOtp(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-3 text-center tracking-[0.4em] text-2xl font-bold text-white focus:outline-none focus:border-[#CCFF00]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full py-3.5 rounded-2xl bg-[#CCFF00] text-black font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
+                  >
+                    {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 stroke-[3]" />}
+                    VERIFY & SYNC
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOtpSent(false)}
+                    className="w-full text-center text-zinc-500 hover:text-zinc-300 text-[11px]"
+                  >
+                    ← Back to email input
+                  </button>
+                </form>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
