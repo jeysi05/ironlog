@@ -16,7 +16,8 @@ import {
   User,
   LogOut,
   Mail,
-  ShieldCheck
+  ShieldCheck,
+  AlertCircle
 } from 'lucide-react';
 
 /* ---------- types ---------- */
@@ -280,7 +281,7 @@ function SwipeRow({ children, onDelete }: { children: React.ReactNode; onDelete:
       <button
         onClick={onDelete}
         aria-label="Delete entry"
-        className="absolute inset-y-0 right-0 flex items-center justify-center bg-red-600 text-white font-mono text-xs font-bold"
+        className="absolute inset-y-0 right-0 flex items-center justify-center bg-rose-600 text-white font-mono text-xs font-bold"
         style={{ width: REVEAL }}
       >
         <Trash2 className="w-4 h-4" />
@@ -314,8 +315,8 @@ function Gauge({
   targetCalories: number;
   targetProtein: number;
 }) {
-  const R = 82;
-  const R2 = 68;
+  const R = 84;
+  const R2 = 70;
   const C = 2 * Math.PI * R;
   const C2 = 2 * Math.PI * R2;
   const ARC = 0.75;
@@ -329,19 +330,21 @@ function Gauge({
 
   return (
     <div className="relative mx-auto w-full max-w-[270px] aspect-square">
-      <svg viewBox="0 0 200 200" className="w-full h-full">
+      <svg viewBox="0 0 200 200" className="w-full h-full drop-shadow-sm">
         <g transform="rotate(135 100 100)">
-          <circle cx="100" cy="100" r={R} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="10" strokeLinecap="round" strokeDasharray={`${ARC * C} ${C}`} />
+          {/* Calorie Background & Arc */}
+          <circle cx="100" cy="100" r={R} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="11" strokeLinecap="round" strokeDasharray={`${ARC * C} ${C}`} />
           <circle
             cx="100" cy="100" r={R} fill="none"
-            stroke={over ? '#F87171' : '#CCFF00'} strokeWidth="10" strokeLinecap="round"
+            stroke={over ? '#FB7185' : '#CCFF00'} strokeWidth="11" strokeLinecap="round"
             strokeDasharray={`${ARC * C * frac} ${C}`}
             style={{ transition: ease, opacity: frac === 0 ? 0 : 1 }}
           />
-          <circle cx="100" cy="100" r={R2} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="4" strokeLinecap="round" strokeDasharray={`${ARC * C2} ${C2}`} />
+          {/* Protein Background & Arc */}
+          <circle cx="100" cy="100" r={R2} fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="5" strokeLinecap="round" strokeDasharray={`${ARC * C2} ${C2}`} />
           <circle
             cx="100" cy="100" r={R2} fill="none"
-            stroke="#60A5FA" strokeWidth="4" strokeLinecap="round"
+            stroke="#60A5FA" strokeWidth="5" strokeLinecap="round"
             strokeDasharray={`${ARC * C2 * pFrac} ${C2}`}
             style={{ transition: ease, opacity: pFrac === 0 ? 0 : 1 }}
           />
@@ -349,16 +352,20 @@ function Gauge({
       </svg>
 
       <div className="absolute inset-0 flex flex-col items-center justify-center pb-2">
-        <span className="font-mono text-[11px] tracking-[0.2em] text-zinc-400 uppercase">{over ? 'OVER' : 'REMAINING'}</span>
-        <span className={`font-black text-6xl tracking-tighter tabular-nums leading-none mt-1 ${over ? 'text-red-400' : 'text-white'}`}>
+        <span className="font-mono text-[10px] tracking-[0.25em] text-zinc-400 uppercase font-semibold">
+          {over ? 'OVER BUDGET' : 'REMAINING'}
+        </span>
+        <span className={`font-black text-6xl tracking-tighter tabular-nums leading-none mt-1.5 ${over ? 'text-rose-400' : 'text-white'}`}>
           {Math.round(shown)}
         </span>
-        <span className="font-mono text-xs text-zinc-400 mt-2">OF {targetCalories} KCAL</span>
+        <span className="font-mono text-[11px] text-zinc-400 mt-2 font-medium">
+          OF {targetCalories} KCAL
+        </span>
       </div>
 
-      <div className="absolute bottom-2 inset-x-0 flex justify-center">
-        <div className="flex items-center gap-1.5 font-mono text-xs">
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+      <div className="absolute bottom-1 inset-x-0 flex justify-center">
+        <div className="flex items-center gap-1.5 font-mono text-[11px] bg-white/[0.03] px-2.5 py-1 rounded-full border border-white/[0.05]">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shadow-sm shadow-blue-400/50" />
           <span className="text-blue-300 font-bold tabular-nums">{Math.round(protein)}</span>
           <span className="text-zinc-400">/{targetProtein}G PRO</span>
         </div>
@@ -391,16 +398,16 @@ export default function IronLogApp() {
   const [profile, setProfile] = useState<UserProfile>({
     id: '',
     gender: 'male',
-    age: 23,
+    age: 24,
     height_cm: 175,
     start_weight_kg: 95.0,
     weight_kg: 95.0,
     goal_weight_kg: 78.0,
     activity_level: 'light',
     goal: 'cut',
-    target_calories: 2209,
+    target_calories: 2202,
     target_protein: 190,
-    target_carbs: 225,
+    target_carbs: 223,
     target_fat: 61,
   });
   
@@ -429,7 +436,7 @@ export default function IronLogApp() {
   const sheetStartY = useRef(0);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
 
-  // Handle guest data migration to authenticated account
+  // Migrate guest records to authenticated UID
   const migrateGuestData = async (guestId: string, authUid: string) => {
     if (!guestId || !authUid || guestId === authUid) return;
     try {
@@ -444,7 +451,6 @@ export default function IronLogApp() {
     }
   };
 
-  // Initialize client session & listeners
   useEffect(() => {
     let localUid = localStorage.getItem('ironlog_user_id');
     if (!localUid) {
@@ -511,16 +517,16 @@ export default function IronLogApp() {
       const initial: UserProfile = {
         id: uid,
         gender: 'male',
-        age: 23,
+        age: 24,
         height_cm: 175,
         start_weight_kg: 95.0,
         weight_kg: 95.0,
         goal_weight_kg: 78.0,
         activity_level: 'light',
         goal: 'cut',
-        target_calories: 2209,
+        target_calories: 2202,
         target_protein: 190,
-        target_carbs: 225,
+        target_carbs: 223,
         target_fat: 61,
       };
       await supabase.from('user_profiles').insert(initial);
@@ -573,7 +579,7 @@ export default function IronLogApp() {
     }
   }, [selectedDate, mounted, userId]);
 
-  /* ---------- authentication handlers ---------- */
+  /* ---------- auth handlers ---------- */
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -621,10 +627,11 @@ export default function IronLogApp() {
 
   const handleGoogleSignIn = async () => {
     haptic();
+    const redirectUri = typeof window !== 'undefined' ? window.location.origin : undefined;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: typeof window !== 'undefined' ? `${window.location.origin}` : undefined,
+        redirectTo: redirectUri,
       },
     });
     if (error) alert('Google Sign-in failed: ' + error.message);
@@ -636,7 +643,7 @@ export default function IronLogApp() {
     setShowAuthModal(false);
   };
 
-  /* ---------- intake calculations ---------- */
+  /* ---------- intake metrics ---------- */
 
   const eaten = dayFoods.reduce((a, c) => a + (c.calories || 0), 0);
   const protein = dayFoods.reduce((a, c) => a + Number(c.protein_g || 0), 0);
@@ -851,7 +858,7 @@ export default function IronLogApp() {
   return (
     <div className="fixed inset-0 bg-black flex justify-center overflow-hidden select-none">
       <style>{`
-        /* Lock root body on iOS to prevent elastic webpage bouncing */
+        /* Root locking prevents Safari webpage elastic bounce */
         html, body {
           position: fixed;
           width: 100%;
@@ -864,7 +871,6 @@ export default function IronLogApp() {
           -webkit-touch-callout: none;
         }
 
-        /* Allow typing interaction inside inputs */
         input, select, textarea {
           -webkit-user-select: text;
           user-select: text;
@@ -879,34 +885,36 @@ export default function IronLogApp() {
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
       `}</style>
 
-      {/* Main Container - App Canvas */}
+      {/* Main Screen Container */}
       <div className="w-full max-w-md h-full flex flex-col relative overflow-hidden bg-[#0A0A0A] text-zinc-300 font-sans">
         
-        {/* Header */}
+        {/* Header Bar */}
         <header
           className="shrink-0 px-5 pb-2 flex items-center justify-between"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top) + 10px)' }}
+          style={{ paddingTop: 'calc(env(safe-area-inset-top) + 8px)' }}
         >
           <div>
-            <span className="font-mono text-[10px] tracking-[0.2em] text-zinc-400 uppercase block">
+            <span className="font-mono text-[10px] tracking-[0.2em] text-zinc-400 uppercase font-bold block">
               {selectedDate.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase()}
             </span>
-            <span className="font-black text-2xl tracking-tighter text-white">
+            <span className="font-black text-2xl tracking-tight text-white">
               {isToday
                 ? 'TODAY'
                 : selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase()}
             </span>
           </div>
+
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.06] rounded-full pl-3 pr-3.5 py-1.5 shadow-inner">
+            <div className="flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] rounded-full pl-3 pr-3.5 py-1.5 shadow-inner">
               <Scale className="w-3.5 h-3.5 text-[#CCFF00]" />
               <span className="font-black text-base text-white tabular-nums">{currentWeight.toFixed(1)}</span>
               <span className="font-mono text-xs text-zinc-400">KG</span>
-              <span className="font-mono text-xs text-[#CCFF00] flex items-center gap-0.5 ml-1">
+              <span className="font-mono text-xs text-[#CCFF00] flex items-center gap-0.5 ml-0.5 font-bold">
                 <TrendingDown className="w-3 h-3" />
                 {weightDelta >= 0 ? `-${weightDelta}` : `+${Math.abs(weightDelta)}`}
               </span>
             </div>
+
             <button
               onClick={() => { 
                 setTempProfile(profile);
@@ -914,14 +922,14 @@ export default function IronLogApp() {
                 haptic(); 
               }}
               aria-label="Profile Settings"
-              className="p-2.5 rounded-full bg-white/[0.03] border border-white/[0.06] text-zinc-400 hover:text-white transition active:scale-90"
+              className="p-2.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-zinc-300 hover:text-white transition active:scale-90"
             >
               <Sliders className="w-4 h-4 text-[#CCFF00]" />
             </button>
           </div>
         </header>
 
-        {/* Week Strip */}
+        {/* Calendar Week Strip */}
         <nav className="shrink-0 px-3 pb-2 grid grid-cols-7 gap-1">
           {weekDays.map((d, i) => {
             const selected = sameDay(d, selectedDate);
@@ -933,10 +941,12 @@ export default function IronLogApp() {
                 disabled={future}
                 onClick={() => goToDay(d)}
                 className={`flex flex-col items-center py-2 rounded-2xl transition active:scale-95 ${
-                  selected ? 'bg-[#CCFF00] text-black shadow-lg shadow-[#CCFF00]/10 font-bold' : 'text-zinc-400 hover:text-white'
+                  selected 
+                    ? 'bg-[#CCFF00] text-black shadow-lg shadow-[#CCFF00]/15 font-bold' 
+                    : 'text-zinc-400 hover:text-white'
                 } ${future ? 'opacity-20 cursor-not-allowed' : ''}`}
               >
-                <span className="font-mono text-xs">{'MTWTFSS'[i]}</span>
+                <span className="font-mono text-[10px] tracking-wider">{'MTWTFSS'[i]}</span>
                 <span className="font-black text-sm tabular-nums mt-0.5">{d.getDate()}</span>
                 <span className={`w-1 h-1 rounded-full mt-1 ${isActualToday ? (selected ? 'bg-black' : 'bg-[#CCFF00]') : 'bg-transparent'}`} />
               </button>
@@ -944,8 +954,8 @@ export default function IronLogApp() {
           })}
         </nav>
 
-        {/* Scrollable Feed Area (Bounded inside native bounds) */}
-        <div className="flex-1 overflow-y-auto overscroll-contain pb-44 [-webkit-overflow-scrolling:touch]">
+        {/* Scrollable Feed Area */}
+        <div className="flex-1 overflow-y-auto overscroll-contain pb-28 [-webkit-overflow-scrolling:touch]">
           <section
             className="px-5 pt-1"
             onTouchStart={(e) => {
@@ -967,17 +977,18 @@ export default function IronLogApp() {
               targetProtein={profile.target_protein}
             />
 
+            {/* Quick Metrics Bar */}
             <div className="grid grid-cols-3 gap-2 mt-2 text-center border-t border-white/[0.04] pt-3">
               <div>
-                <span className="font-mono text-xs tracking-[0.15em] text-zinc-400 block">INTAKE</span>
+                <span className="font-mono text-[10px] tracking-[0.15em] text-zinc-400 uppercase block font-semibold">INTAKE</span>
                 <span className="font-black text-lg text-white tabular-nums">{eaten}</span>
               </div>
               <div>
-                <span className="font-mono text-xs tracking-[0.15em] text-zinc-400 block">BURNED</span>
+                <span className="font-mono text-[10px] tracking-[0.15em] text-zinc-400 uppercase block font-semibold">BURNED</span>
                 <span className="font-black text-lg text-sky-400 tabular-nums">-{burned}</span>
               </div>
               <div>
-                <span className="font-mono text-xs tracking-[0.15em] text-zinc-400 block">TO GOAL</span>
+                <span className="font-mono text-[10px] tracking-[0.15em] text-zinc-400 uppercase block font-semibold">TO GOAL</span>
                 <span className="font-black text-lg text-white tabular-nums">
                   {toGoal}
                   <span className="font-mono text-xs text-zinc-400 ml-0.5">KG</span>
@@ -986,38 +997,85 @@ export default function IronLogApp() {
             </div>
           </section>
 
-          {/* Precision Macro Ratios */}
-          <section className="px-5 mt-5 grid grid-cols-3 gap-3">
+          {/* Macro Budget Cards with Overflow Alerts */}
+          <section className="px-5 mt-4 grid grid-cols-3 gap-2.5">
             {[
-              { label: 'PROTEIN', val: protein, target: profile.target_protein, color: 'bg-blue-400' },
-              { label: 'CARBS', val: carbs, target: profile.target_carbs, color: 'bg-emerald-400' },
-              { label: 'FAT', val: fat, target: profile.target_fat, color: 'bg-amber-400' },
-            ].map((m) => (
-              <div key={m.label} className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-3">
-                <span className="font-mono text-xs tracking-[0.1em] text-zinc-400 block">{m.label}</span>
-                <div className="mt-1 flex items-baseline gap-1">
-                  <span className="font-black text-lg text-white tabular-nums">{Math.round(m.val)}</span>
-                  <span className="font-mono text-xs text-zinc-400">/{m.target}g</span>
+              { label: 'PROTEIN', val: protein, target: profile.target_protein, barColor: 'bg-blue-400', txtColor: 'text-blue-400' },
+              { label: 'CARBS', val: carbs, target: profile.target_carbs, barColor: 'bg-emerald-400', txtColor: 'text-emerald-400' },
+              { label: 'FAT', val: fat, target: profile.target_fat, barColor: 'bg-amber-400', txtColor: 'text-amber-400' },
+            ].map((m) => {
+              const isOver = m.val > m.target;
+              const overDiff = Math.round(m.val - m.target);
+              const pct = Math.min((m.val / (m.target || 1)) * 100, 100);
+
+              return (
+                <div 
+                  key={m.label} 
+                  className={`border rounded-2xl p-3 transition ${
+                    isOver 
+                      ? 'bg-rose-500/[0.05] border-rose-500/30' 
+                      : 'bg-white/[0.02] border-white/[0.05]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-[10px] tracking-[0.1em] text-zinc-400 font-bold block">{m.label}</span>
+                    {isOver && (
+                      <span className="font-mono text-[9px] font-bold text-rose-400 bg-rose-500/10 px-1 py-0.5 rounded">
+                        +{overDiff}g
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 flex items-baseline gap-1">
+                    <span className={`font-black text-lg tabular-nums ${isOver ? 'text-rose-300' : 'text-white'}`}>
+                      {Math.round(m.val)}
+                    </span>
+                    <span className="font-mono text-xs text-zinc-400">/{m.target}g</span>
+                  </div>
+                  <div className="h-1.5 mt-2 bg-white/5 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-700 ${isOver ? 'bg-rose-500' : m.barColor}`} 
+                      style={{ width: `${pct}%` }} 
+                    />
+                  </div>
                 </div>
-                <div className="h-1 mt-2 bg-white/5 rounded-full overflow-hidden">
-                  <div className={`h-full ${m.color} transition-all duration-700`} style={{ width: `${Math.min((m.val / (m.target || 1)) * 100, 100)}%` }} />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </section>
 
-          {/* Feed List */}
-          <section className="mt-6">
-            <h2 className="px-5 font-mono text-xs tracking-[0.2em] text-zinc-400 uppercase mb-2">
-              {activeTab === 'meals' ? 'Nutrition logs' : 'Training logs'}
-              <span className="text-zinc-500"> · swipe left to delete</span>
-            </h2>
+          {/* Sticky Section Segment Header */}
+          <section className="mt-5">
+            <div className="sticky top-0 z-10 bg-[#0A0A0A]/95 backdrop-blur-md px-5 py-2.5 border-b border-white/[0.04] flex items-center justify-between">
+              <div className="flex items-center gap-1.5 bg-white/[0.04] p-1 rounded-xl border border-white/[0.05]">
+                <button
+                  onClick={() => { setActiveTab('meals'); haptic(); }}
+                  className={`font-mono text-xs font-bold px-3 py-1.5 rounded-lg transition active:scale-95 ${
+                    activeTab === 'meals' ? 'bg-[#CCFF00] text-black shadow' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  NUTRITION ({dayFoods.length})
+                </button>
+                <button
+                  onClick={() => { setActiveTab('workouts'); haptic(); }}
+                  className={`font-mono text-xs font-bold px-3 py-1.5 rounded-lg transition active:scale-95 ${
+                    activeTab === 'workouts' ? 'bg-[#CCFF00] text-black shadow' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  TRAINING ({dayExercises.length})
+                </button>
+              </div>
 
+              <span className="font-mono text-[10px] text-zinc-400 tracking-wider uppercase hidden sm:block">
+                SWIPE TO DELETE
+              </span>
+            </div>
+
+            {/* Logs Feed */}
             {activeTab === 'meals' ? (
               dayFoods.length === 0 ? (
-                <p className="mx-5 py-12 text-center border border-dashed border-white/5 rounded-2xl font-mono text-xs text-zinc-500 uppercase tracking-widest">
-                  Nothing logged today
-                </p>
+                <div className="mx-5 my-8 py-12 text-center border border-dashed border-white/[0.06] rounded-2xl">
+                  <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Nothing logged today</p>
+                  <p className="font-mono text-[10px] text-zinc-400 mt-1">Snap a photo or type below</p>
+                </div>
               ) : (
                 dayFoods.map((f) => {
                   const lean = (Number(f.protein_g || 0) * 4) / (f.calories || 1) >= 0.35;
@@ -1028,7 +1086,9 @@ export default function IronLogApp() {
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-semibold text-white truncate">{f.food_name}</p>
                             {lean && (
-                              <span className="shrink-0 font-mono text-xs bg-[#CCFF00]/10 border border-[#CCFF00]/20 text-[#CCFF00] px-1.5 py-0.5 rounded">LEAN</span>
+                              <span className="shrink-0 font-mono text-[9px] bg-[#CCFF00]/10 border border-[#CCFF00]/25 text-[#CCFF00] font-bold px-1.5 py-0.5 rounded">
+                                LEAN
+                              </span>
                             )}
                           </div>
                           <p className="font-mono text-xs text-zinc-400 mt-0.5 truncate">{f.quantity || '1 serving'}</p>
@@ -1050,9 +1110,10 @@ export default function IronLogApp() {
                 })
               )
             ) : dayExercises.length === 0 ? (
-              <p className="mx-5 py-12 text-center border border-dashed border-white/5 rounded-2xl font-mono text-xs text-zinc-500 uppercase tracking-widest">
-                No training sessions
-              </p>
+              <div className="mx-5 my-8 py-12 text-center border border-dashed border-white/[0.06] rounded-2xl">
+                <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">No training sessions</p>
+                <p className="font-mono text-[10px] text-zinc-400 mt-1">Log workout sets or cardio below</p>
+              </div>
             ) : (
               dayExercises.map((e) => {
                 const prior = priorBest[e.exercise_name.toLowerCase().trim()];
@@ -1065,7 +1126,7 @@ export default function IronLogApp() {
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-semibold text-white truncate">{e.exercise_name}</p>
                           {isPR && (
-                            <span className="shrink-0 font-mono text-xs bg-amber-400/15 border border-amber-400/30 text-amber-300 px-1.5 py-0.5 rounded flex items-center gap-1 font-bold">
+                            <span className="shrink-0 font-mono text-[9px] bg-amber-400/15 border border-amber-400/30 text-amber-300 px-1.5 py-0.5 rounded flex items-center gap-1 font-bold">
                               <Trophy className="w-2.5 h-2.5" /> PR
                             </span>
                           )}
@@ -1087,13 +1148,13 @@ export default function IronLogApp() {
           </section>
         </div>
 
-        {/* Floating Command Dock */}
+        {/* Floating Single Dock (Compact Thumb-Friendly) */}
         <div
-          className="absolute inset-x-0 bottom-0 z-30 px-3 pt-6 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/95 to-transparent"
+          className="absolute inset-x-0 bottom-0 z-30 px-3 pt-6 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/95 to-transparent pointer-events-none"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 10px)' }}
         >
           {hasDrafts && !sheetOpen && (
-            <div className="flex justify-center mb-2">
+            <div className="flex justify-center mb-2 pointer-events-auto">
               <button
                 onClick={() => { setSheetOpen(true); haptic(); }}
                 className="flex items-center gap-1.5 bg-[#CCFF00] text-black font-mono text-xs font-bold px-4 py-1.5 rounded-full shadow-lg shadow-[#CCFF00]/20 animate-pulse active:scale-95 transition"
@@ -1104,26 +1165,9 @@ export default function IronLogApp() {
             </div>
           )}
 
-          <div className="flex justify-center gap-2 mb-2.5">
-            {(['meals', 'workouts'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => {
-                  setActiveTab(t);
-                  haptic();
-                }}
-                className={`font-mono text-xs font-bold px-4 py-1.5 rounded-full transition active:scale-95 ${
-                  activeTab === t ? 'bg-white text-black shadow-md' : 'bg-white/5 text-zinc-400 hover:text-white'
-                }`}
-              >
-                {t === 'meals' ? `NUTRITION (${dayFoods.length})` : `TRAINING (${dayExercises.length})`}
-              </button>
-            ))}
-          </div>
-
           <input type="file" accept="image/*" capture="environment" ref={fileInputRef} onChange={handleImageUpload} className="hidden" />
 
-          <div className="bg-[#141414] border border-white/10 rounded-full p-1.5 flex items-center gap-1.5 shadow-2xl shadow-black/80 focus-within:border-[#CCFF00]/50 transition">
+          <div className="bg-[#141414]/95 backdrop-blur-xl border border-white/10 rounded-full p-1.5 flex items-center gap-1.5 shadow-2xl shadow-black/80 focus-within:border-[#CCFF00]/50 transition pointer-events-auto">
             <button
               onClick={() => {
                 haptic();
@@ -1155,7 +1199,7 @@ export default function IronLogApp() {
           </div>
         </div>
 
-        {/* Review & Edit Bottom Sheet */}
+        {/* Staged Review Sheet */}
         {hasDrafts && sheetOpen && (
           <>
             <div
@@ -1188,7 +1232,7 @@ export default function IronLogApp() {
                 <div className="flex items-end justify-between">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-[#CCFF00]" />
-                    <span className="font-black text-xl tracking-tighter text-white">REVIEW & EDIT</span>
+                    <span className="font-black text-xl tracking-tight text-white">REVIEW & EDIT</span>
                   </div>
                   <div className="font-mono text-xs text-right text-zinc-400">
                     {draftFoods.length > 0 && (
@@ -1225,7 +1269,7 @@ export default function IronLogApp() {
                       <button
                         onClick={() => setDraftFoods((d) => d.filter((_, j) => j !== i))}
                         aria-label="Remove"
-                        className="p-1 text-zinc-400 hover:text-red-400 transition"
+                        className="p-1 text-zinc-400 hover:text-rose-400 transition"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1258,7 +1302,7 @@ export default function IronLogApp() {
                       <button
                         onClick={() => setDraftExercises((d) => d.filter((_, j) => j !== i))}
                         aria-label="Remove"
-                        className="p-1 text-zinc-400 hover:text-red-400 transition"
+                        className="p-1 text-zinc-400 hover:text-rose-400 transition"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1332,8 +1376,11 @@ export default function IronLogApp() {
             />
             <div className="absolute inset-x-0 bottom-0 z-50 bg-[#121212] border-t border-white/10 rounded-t-[32px] max-h-[92dvh] flex flex-col shadow-2xl">
               
+              {/* Native iOS Pull Handle */}
+              <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mt-3 mb-1" />
+
               {/* Header with Title and Close X */}
-              <div className="shrink-0 px-6 pt-5 pb-4 border-b border-white/[0.06] flex items-center justify-between">
+              <div className="shrink-0 px-6 pt-3 pb-4 border-b border-white/[0.06] flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-full bg-[#CCFF00]/10 flex items-center justify-center">
                     <Sliders className="w-4 h-4 text-[#CCFF00]" />
@@ -1356,7 +1403,7 @@ export default function IronLogApp() {
               </div>
 
               {/* Scrollable Form Content */}
-              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5 [-webkit-overflow-scrolling:touch]">
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5 pb-28 [-webkit-overflow-scrolling:touch]">
                 
                 {/* Account / Cloud Sync Card */}
                 <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between font-mono text-xs">
@@ -1383,11 +1430,11 @@ export default function IronLogApp() {
                   </button>
                 </div>
 
-                {/* Live Metabolic Preview Card */}
+                {/* Metabolic Preview Card */}
                 <div className="p-4 rounded-2xl bg-gradient-to-b from-white/[0.05] to-white/[0.02] border border-white/[0.08]">
                   <div className="flex items-baseline justify-between">
                     <div>
-                      <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest block">
+                      <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest block font-semibold">
                         CALCULATED TARGET
                       </span>
                       <div className="flex items-baseline gap-1 mt-0.5">
@@ -1602,11 +1649,11 @@ export default function IronLogApp() {
                     </span>
                   </div>
                   <p className="text-zinc-400 text-[11px] leading-relaxed">
-                    All your meals, weigh-ins, and personal records automatically sync across your iPhone, laptop, and iPad.
+                    All meals, weigh-ins, and personal records automatically sync across your iPhone, laptop, and iPad.
                   </p>
                   <button
                     onClick={handleSignOut}
-                    className="w-full py-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 font-bold hover:bg-red-500/20 transition active:scale-95 flex items-center justify-center gap-2"
+                    className="w-full py-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 font-bold hover:bg-rose-500/20 transition active:scale-95 flex items-center justify-center gap-2"
                   >
                     <LogOut className="w-4 h-4" />
                     SIGN OUT
@@ -1615,10 +1662,9 @@ export default function IronLogApp() {
               ) : !otpSent ? (
                 <div className="space-y-4">
                   <p className="text-zinc-400 text-xs">
-                    Sign in to sync your data across devices. Existing logs on this phone will be linked automatically.
+                    Sign in to sync data across devices. Existing logs on this phone will be linked automatically.
                   </p>
 
-                  {/* Google OAuth Button */}
                   <button
                     onClick={handleGoogleSignIn}
                     type="button"
@@ -1639,7 +1685,6 @@ export default function IronLogApp() {
                     <div className="flex-1 h-px bg-white/5" />
                   </div>
 
-                  {/* 6-Digit Email OTP Form */}
                   <form onSubmit={handleSendOtp} className="space-y-3">
                     <input
                       type="email"
